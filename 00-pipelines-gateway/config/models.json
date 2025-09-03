@@ -1,0 +1,81 @@
+{
+  "models": {
+    "gpt-3.5-turbo": {
+      "provider": "openrouter",
+      "model_id": "openai/gpt-3.5-turbo",
+      "max_tokens": 4096,
+      "cost_per_token": 0.0000015,
+      "capabilities": ["chat", "streaming"],
+      "description": "Fast and efficient chat model"
+    },
+    "gpt-4": {
+      "provider": "openrouter",
+      "model_id": "openai/gpt-4",
+      "max_tokens": 8192,
+      "cost_per_token": 0.00003,
+      "capabilities": ["chat", "streaming", "advanced"],
+      "description": "Advanced reasoning and analysis"
+    },
+    "claude-3-sonnet": {
+      "provider": "openrouter",
+      "model_id": "anthropic/claude-3-sonnet",
+      "max_tokens": 4096,
+      "cost_per_token": 0.000015,
+      "capabilities": ["chat", "streaming", "analysis"],
+      "description": "Excellent for analysis and reasoning"
+    },
+    "gpt-4-turbo": {
+      "provider": "openrouter",
+      "model_id": "openai/gpt-4-turbo",
+      "max_tokens": 16384,
+      "cost_per_token": 0.00001,
+      "capabilities": ["chat", "streaming", "advanced", "large_context"],
+      "description": "Large context window with advanced capabilities"
+    },
+    "llama-3-70b": {
+      "provider": "openrouter",
+      "model_id": "meta-llama/llama-3-70b-instruct",
+      "max_tokens": 8192,
+      "cost_per_token": 0.00000088,
+      "capabilities": ["chat", "streaming", "open_source"],
+      "description": "Open source model with strong performance"
+    },
+    "ollama-llama3": {
+      "provider": "ollama",
+      "model_id": "llama3:8b",
+      "endpoint": "http://localhost:11434",
+      "max_tokens": 4096,
+      "cost_per_token": 0.0,
+      "capabilities": ["chat", "streaming", "local"],
+      "description": "Local Llama 3 model via Ollama"
+    },
+    "mock-model": {
+      "provider": "local",
+      "model_id": "mock-model",
+      "max_tokens": 2048,
+      "cost_per_token": 0.0,
+      "capabilities": ["chat", "streaming", "development"],
+      "description": "Mock model for development and testing"
+    }
+  },
+  "routing_rules": {
+    "default_model": "mock-model",
+    "intent_mapping": {
+      "analysis": ["claude-3-sonnet", "gpt-4"],
+      "generation": ["gpt-4-turbo", "gpt-4"],
+      "question": ["gpt-3.5-turbo", "llama-3-70b"],
+      "general": ["gpt-3.5-turbo", "mock-model"]
+    },
+    "fallback_chain": [
+      "mock-model"
+    ]
+  },
+  "rate_limits": {
+    "per_user_per_minute": 60,
+    "per_model_per_minute": {
+      "gpt-4": 10,
+      "claude-3-sonnet": 20,
+      "gpt-3.5-turbo": 100
+    }
+  }
+}

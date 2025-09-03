@@ -1,0 +1,155 @@
+# OpenWebUI Suite Release Manifest
+# Date: 2025-09-03
+# This manifest pins the versions of all components in the suite
+
+metadata:
+  version: "2025.09.03"
+  description: "Initial OpenWebUI Suite release with plugin system"
+  created_at: "2025-09-03T00:00:00Z"
+  compatibility:
+    openwebui_core: ">=1.0.0"
+    python: ">=3.10"
+
+# Core OpenWebUI fork with extension system
+core:
+  repository: "ghcr.io/<ORG>/openwebui-core"
+  tag: "v1.0.0-robert.1"
+  digest: "sha256:placeholder-core-digest"
+  features:
+    - "backend-extension-loader"
+    - "frontend-widget-loader"
+    - "admin-plugin-panel"
+
+# Python plugins to be installed
+plugins:
+  - name: "owui-plugin-template"
+    version: "0.1.0"
+    source: "pypi"  # or "github-packages"
+    registry: "https://pypi.org/simple/"
+    package: "owui-plugin-template"
+    entry_point: "openwebui.plugins"
+    required: false
+    description: "Template plugin for development reference"
+    
+  - name: "owui-plugin-ollama-tools"
+    version: "0.1.0"
+    source: "pypi"  # or "github-packages"
+    registry: "https://pypi.org/simple/"
+    package: "owui-plugin-ollama-tools"
+    entry_point: "openwebui.plugins"
+    required: true
+    description: "Ollama integration tools and utilities"
+    environment:
+      - "OLLAMA_HOST"
+      - "OWUI_MEMORY_PATH"
+
+# Frontend widgets to be included
+widgets:
+  - name: "owui-widget-template"
+    version: "0.1.0"
+    source: "npm"
+    registry: "https://npm.pkg.github.com"
+    package: "@<ORG>/owui-widget-template"
+    required: false
+    description: "Template widget for development reference"
+
+# Environment variable defaults
+environment:
+  defaults:
+    OLLAMA_HOST: "http://core2-gpu:11434"
+    OWUI_MEMORY_PATH: "/data/memory.sqlite"
+    OWUI_PLUGIN_TIMEOUT: "30"
+    OWUI_WIDGET_CACHE_TTL: "3600"
+  
+  required:
+    - "OLLAMA_HOST"
+  
+  optional:
+    - "OWUI_MEMORY_PATH"
+    - "OWUI_PLUGIN_TIMEOUT"
+    - "OWUI_WIDGET_CACHE_TTL"
+
+# Health check configuration
+healthcheck:
+  interval: "30s"
+  timeout: "10s"
+  retries: 3
+  start_period: "60s"
+  endpoints:
+    - "/health"
+    - "/ext/ollama/health"
+    - "/ext/template/health"
+
+# Resource requirements
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "250m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
+
+# Security configuration
+security:
+  run_as_user: 1000
+  run_as_group: 1000
+  read_only_root_filesystem: false
+  allow_privilege_escalation: false
+  capabilities:
+    drop:
+      - "ALL"
+
+# Volume mounts
+volumes:
+  - name: "data"
+    mount_path: "/data"
+    description: "Persistent data storage for plugins"
+  - name: "config"
+    mount_path: "/config"
+    description: "Configuration files"
+    read_only: true
+
+# Network configuration
+networking:
+  ports:
+    - "3000:3000"  # Main web interface
+  internal_ports:
+    - "8080"       # Health check port
+
+# Build configuration
+build:
+  base_image: "python:3.11-slim"
+  build_args:
+    CORE_VERSION: "v1.0.0-robert.1"
+    PLUGIN_VERSIONS: "owui-plugin-ollama-tools==0.1.0"
+  
+  labels:
+    org.opencontainers.image.title: "OpenWebUI Suite"
+    org.opencontainers.image.description: "OpenWebUI with plugin system"
+    org.opencontainers.image.version: "2025.09.03"
+    org.opencontainers.image.vendor: "OpenWebUI Suite"
+    org.opencontainers.image.licenses: "MIT"
+
+# CI/CD configuration
+ci:
+  triggers:
+    - "manifest_change"
+    - "core_release"
+    - "plugin_release"
+  
+  build_matrix:
+    platforms:
+      - "linux/amd64"
+      - "linux/arm64"
+  
+  tests:
+    - "health_check"
+    - "plugin_load"
+    - "api_smoke_test"
+  
+  publish:
+    registry: "ghcr.io"
+    repository: "<ORG>/openwebui-suite"
+    tags:
+      - "2025.09.03"
+      - "latest"
