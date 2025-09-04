@@ -7,6 +7,7 @@ import base64
 import logging
 import os
 import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -107,6 +108,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# STT cleanup configuration
+AUD_DIR = os.getenv("AUDIO_STORAGE_PATH", "/tmp/owui_audio")
+TTL_SEC = int(os.getenv("STT_TTL_SECONDS", "900"))       # 15 min
+MAX_MB = int(os.getenv("STT_MAX_UPLOAD_MB", "25"))
+os.makedirs(AUD_DIR, exist_ok=True)
+
+def _cleanup_loop():
+    while True:
+        now = time.time()
+        try:
+            for f in os.listdir(AUD_DIR):
+                p = os.path.join(AUD_DIR, f)
+                if os.path.isfile(p) and (now - os.path.getmtime(p) > TTL_SEC):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        time.sleep(120)
+
+
+@app.on_event("startup")
+def _start_cleanup():
+    threading.Thread(target=_cleanup_loop, daemon=True).start()
+
 def initialize_models():
     """Initialize STT and TTS models"""
     global stt_model, tts_model
@@ -144,10 +171,10 @@ def save_temp_audio(audio_data: bytes, format: str) -> str:
 def validate_audio_size(audio_data: bytes) -> None:
     """Validate audio file size"""
     size_mb = len(audio_data) / (1024 * 1024)
-    if size_mb > MAX_AUDIO_SIZE_MB:
+    if size_mb > MAX_MB:
         raise HTTPException(
             status_code=413,
-            detail=f"Audio file too large: {size_mb:.1f}MB (max: {MAX_AUDIO_SIZE_MB}MB)"
+            detail=f"Audio file too large: {size_mb:.1f}MB (max: {MAX_MB}MB)"
         )
 
 @app.on_event("startup")

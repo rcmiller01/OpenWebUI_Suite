@@ -3,8 +3,12 @@ import os
 import base64
 import httpx
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from pydantic import BaseModel
+from urllib.parse import urlparse
+from .security import verify_sig
+
+MAX_BYTES = int(os.getenv("MM_MAX_DOWNLOAD_BYTES", "10485760"))  # 10 MB
 
 app = FastAPI(title="Multimodal Router", version="0.1.0")
 
@@ -56,6 +60,25 @@ def _or_headers() -> Dict[str, str]:
     }
 
 
+def _is_safe_url(u: str) -> bool:
+    try:
+        p = urlparse(u)
+        return p.scheme in ("http", "https")
+    except Exception:
+        return False
+
+
+async def _safe_get_bytes(url: str) -> bytes:
+    if not _is_safe_url(url):
+        raise HTTPException(400, "Invalid URL scheme")
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.get(url, follow_redirects=True)
+        r.raise_for_status()
+        if int(r.headers.get("content-length", "0")) > MAX_BYTES:
+            raise HTTPException(413, "Payload too large")
+        return r.content[:MAX_BYTES]
+
+
 def _make_image_content(req: ImageIn) -> Any:
     if req.image_url:
         return {"type": "image_url", "image_url": {"url": req.image_url}}
@@ -69,11 +92,15 @@ def _make_image_content(req: ImageIn) -> Any:
 # ---- Endpoints ----
 
 @app.post("/mm/image")
-async def analyze_image(req: ImageIn):
+async def analyze_image(req: ImageIn, request: Request):
+    raw = await request.body()
+    await verify_sig(request, raw)
     """
     Analyze an image via a VLM on OpenRouter.
     Normalized output: { observations: [{label,text}], safety: [] }
     """
+    if req.image_url and not _is_safe_url(req.image_url):
+        raise HTTPException(400, "Invalid URL scheme")
     content_block = _make_image_content(req)
     prompt = (req.prompt or PROMPT_IMAGE)[:1000]
 
@@ -181,17 +208,16 @@ async def analyze_audio(
 
 
 @app.post("/mm/audio_json")
-async def analyze_audio_json(req: AudioJsonIn):
+async def analyze_audio_json(req: AudioJsonIn, request: Request):
+    raw = await request.body()
+    await verify_sig(request, raw)
     """
     Analyze audio from JSON input (URL or base64).
     Uses local STT, then summarizes with OpenRouter.
     Normalized output: { transcript: "...", observations: [] }
     """
     if req.audio_url:
-        async with httpx.AsyncClient(timeout=60) as c:
-            r = await c.get(req.audio_url)
-            r.raise_for_status()
-            data = r.content
+        data = await _safe_get_bytes(req.audio_url)
     elif req.audio_b64:
         data = base64.b64decode(req.audio_b64)
     else:
