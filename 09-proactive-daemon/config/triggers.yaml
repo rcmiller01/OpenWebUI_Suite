@@ -1,0 +1,57 @@
+triggers:
+  time_of_day:
+    enabled: true
+    schedule:
+      - "08:00"  # Morning briefing
+      - "18:00"  # Evening summary
+    messages:
+      morning: "Good morning! Here's your daily briefing and task overview for today."
+      evening: "Good evening! Here's a summary of today's activities and tomorrow's outlook."
+
+  inactivity_gap:
+    enabled: true
+    threshold_minutes: 120
+    message: "I noticed you haven't been active for a while. Would you like me to check on anything or provide an update?"
+
+  openbb_alerts:
+    enabled: true
+    symbols: ["SPY", "QQQ", "BTC-USD"]
+    thresholds:
+      price_change_percent: 5.0  # 5% change triggers alert
+      volume_spike_percent: 200.0  # 200% volume increase
+    check_interval_minutes: 15
+    message: "Market alert: {symbol} has moved {change:.1f}% in the last {interval} minutes"
+
+  tandoor_gaps:
+    enabled: true
+    check_interval_hours: 6
+    meal_planning_reminder: "It's time to plan meals for the coming days. Would you like recipe suggestions?"
+    shopping_reminder: "Based on your meal plan, you might need to shop for these ingredients soon."
+    message: "Meal planning reminder: {suggestion}"
+
+  drive_anomalies:
+    enabled: true
+    check_interval_minutes: 30
+    speed_threshold_mph: 80
+    harsh_braking_threshold: 0.5  # g-force
+    message: "Drive safety alert: {anomaly_type} detected. Please drive safely."
+
+# Global settings
+global:
+  pipelines_url: "http://127.0.0.1:8088"
+  system_token: "${PIPELINES_SYSTEM_TOKEN}"
+  dry_run: false
+  log_level: "INFO"
+  database_path: "data/proactive_daemon.db"
+
+# Idempotency settings
+idempotency:
+  ttl_hours: 24  # How long to keep idempotency keys
+  cleanup_interval_hours: 6  # How often to clean up old keys
+
+# Backoff settings
+backoff:
+  initial_delay_seconds: 1
+  max_delay_seconds: 60
+  multiplier: 2
+  max_retries: 5

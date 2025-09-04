@@ -1,0 +1,3 @@
+"""
+ByteBot Gateway Adapters
+"""

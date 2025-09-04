@@ -1,0 +1,74 @@
+{
+  "test_user_1": {
+    "user_id": "test_user_1",
+    "energy": 0.5354672504896495,
+    "sociability": 0.4776581989389003,
+    "curiosity": 0.47132346184577134,
+    "empathy_reserve": 0.5020790156744267,
+    "novelty_seek": 0.5165283565289999,
+    "timestamp": 1756948309.372035
+  },
+  "test_user_2": {
+    "user_id": "test_user_2",
+    "energy": 1.0,
+    "sociability": 0.30184171332509147,
+    "curiosity": 0.0,
+    "empathy_reserve": 0.47485485319205717,
+    "novelty_seek": 0.5394971559995548,
+    "timestamp": 1756948309.3742208
+  },
+  "test_user_3": {
+    "user_id": "test_user_3",
+    "energy": 0.5054551164952475,
+    "sociability": 0.5018838465479293,
+    "curiosity": 0.514701203002944,
+    "empathy_reserve": 0.49002965142977434,
+    "novelty_seek": 0.4944598118275555,
+    "timestamp": 1756948309.3763227
+  },
+  "test_user_4": {
+    "user_id": "test_user_4",
+    "energy": 0.39702905016996004,
+    "sociability": 1.0,
+    "curiosity": 0.009336466444450534,
+    "empathy_reserve": 0.46017701064168137,
+    "novelty_seek": 0.5179513497724934,
+    "timestamp": 1756948309.3789728
+  },
+  "test_user_5": {
+    "user_id": "test_user_5",
+    "energy": 0.49173090664040275,
+    "sociability": 0.514538050028968,
+    "curiosity": 0.5262952028493186,
+    "empathy_reserve": 0.7306413291796456,
+    "novelty_seek": 1.0,
+    "timestamp": 1756948309.3799188
+  },
+  "tech_user": {
+    "user_id": "tech_user",
+    "energy": 0.5154697476057243,
+    "sociability": 0.5030789341786552,
+    "curiosity": 0.5456856569468215,
+    "empathy_reserve": 0.5751251741208881,
+    "novelty_seek": 0.5013600235654111,
+    "timestamp": 1756948309.8946953
+  },
+  "sad_user": {
+    "user_id": "sad_user",
+    "energy": 0.5545550929749635,
+    "sociability": 0.5230966092058076,
+    "curiosity": 0.5313405273312127,
+    "empathy_reserve": 1.0,
+    "novelty_seek": 0.4980507109864693,
+    "timestamp": 1756948309.89673
+  },
+  "test_user": {
+    "user_id": "test_user",
+    "energy": 0.7221929807279827,
+    "sociability": 0.8225742731881395,
+    "curiosity": 0.4642755971278837,
+    "empathy_reserve": 0.5154771207247376,
+    "novelty_seek": 0.5609775105779831,
+    "timestamp": 1756948350.3054183
+  }
+}

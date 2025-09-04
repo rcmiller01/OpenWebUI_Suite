@@ -1,0 +1,3 @@
+# Sentiment model placeholder
+# This would contain a trained sentiment analysis model
+# For now, using rule-based approach in the main app

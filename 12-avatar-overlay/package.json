@@ -1,0 +1,31 @@
+{
+  "name": "avatar-overlay",
+  "version": "1.0.0",
+  "description": "Real-time 2D avatar overlay with lip-sync and expressions",
+  "main": "web/app.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "vite preview --port 5173"
+  },
+  "dependencies": {
+    "@rive-app/canvas": "^2.0.0",
+    "reconnecting-websocket": "^4.4.0"
+  },
+  "devDependencies": {
+    "vite": "^4.4.0",
+    "@vitejs/plugin-legacy": "^4.0.0"
+  },
+  "keywords": [
+    "avatar",
+    "animation",
+    "rive",
+    "websocket",
+    "lip-sync",
+    "real-time"
+  ],
+  "author": "OpenWebUI Suite",
+  "license": "MIT"
+}

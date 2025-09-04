@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avatar Overlay Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background: #007acc;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #005999;
+        }
+        input[type="range"] {
+            width: 200px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .message-log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Avatar Overlay Test Interface</h1>
+
+    <div class="test-section">
+        <h2>Connection Status</h2>
+        <div id="connection-status" class="status disconnected">
+            WebSocket: Disconnected
+        </div>
+        <button id="connect-btn">Connect</button>
+        <button id="disconnect-btn">Disconnect</button>
+    </div>
+
+    <div class="test-section">
+        <h2>Viseme Test</h2>
+        <div class="test-controls">
+            <button id="viseme-neutral">Neutral</button>
+            <button id="viseme-aa">AA</button>
+            <button id="viseme-oh">OH</button>
+            <button id="viseme-ee">EE</button>
+            <button id="viseme-mm">MM</button>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Emotion Test</h2>
+        <div class="test-controls">
+            <button id="emotion-neutral">Neutral</button>
+            <button id="emotion-warm">Warm</button>
+            <button id="emotion-excited">Excited</button>
+            <button id="emotion-calm">Calm</button>
+            <button id="emotion-focused">Focused</button>
+            <button id="emotion-confused">Confused</button>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Drive State Test</h2>
+        <div class="test-controls">
+            <label>Energy: <input type="range" id="energy-slider" min="0" max="1" step="0.1" value="0.5">
+            <span id="energy-value">0.5</span></label>
+        </div>
+        <div class="test-controls">
+            <label>Focus: <input type="range" id="focus-slider" min="0" max="1" step="0.1" value="0.5">
+            <span id="focus-value">0.5</span></label>
+        </div>
+        <div class="test-controls">
+            <label>Confidence: <input type="range" id="confidence-slider" min="0" max="1" step="0.1" value="0.5">
+            <span id="confidence-value">0.5</span></label>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Sequence Test</h2>
+        <div class="test-controls">
+            <button id="sequence-basic">Basic Sequence</button>
+            <button id="sequence-complex">Complex Sequence</button>
+            <button id="sequence-stop">Stop</button>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Message Log</h2>
+        <div id="message-log" class="message-log"></div>
+        <button id="clear-log">Clear Log</button>
+    </div>
+
+    <script>
+        let ws = null;
+        const messageLog = document.getElementById('message-log');
+        const connectionStatus = document.getElementById('connection-status');
+
+        // Connect to WebSocket
+        document.getElementById('connect-btn').addEventListener('click', connect);
+        document.getElementById('disconnect-btn').addEventListener('click', disconnect);
+
+        // Viseme controls
+        document.getElementById('viseme-neutral').addEventListener('click', () => sendViseme('neutral'));
+        document.getElementById('viseme-aa').addEventListener('click', () => sendViseme('AA'));
+        document.getElementById('viseme-oh').addEventListener('click', () => sendViseme('OH'));
+        document.getElementById('viseme-ee').addEventListener('click', () => sendViseme('EE'));
+        document.getElementById('viseme-mm').addEventListener('click', () => sendViseme('MM'));
+
+        // Emotion controls
+        document.getElementById('emotion-neutral').addEventListener('click', () => sendEmotion('neutral'));
+        document.getElementById('emotion-warm').addEventListener('click', () => sendEmotion('warm'));
+        document.getElementById('emotion-excited').addEventListener('click', () => sendEmotion('excited'));
+        document.getElementById('emotion-calm').addEventListener('click', () => sendEmotion('calm'));
+        document.getElementById('emotion-focused').addEventListener('click', () => sendEmotion('focused'));
+        document.getElementById('emotion-confused').addEventListener('click', () => sendEmotion('confused'));
+
+        // Drive state controls
+        document.getElementById('energy-slider').addEventListener('input', updateDriveState);
+        document.getElementById('focus-slider').addEventListener('input', updateDriveState);
+        document.getElementById('confidence-slider').addEventListener('input', updateDriveState);
+
+        // Sequence controls
+        document.getElementById('sequence-basic').addEventListener('click', playBasicSequence);
+        document.getElementById('sequence-complex').addEventListener('click', playComplexSequence);
+        document.getElementById('sequence-stop').addEventListener('click', stopSequence);
+
+        // Clear log
+        document.getElementById('clear-log').addEventListener('click', () => {
+            messageLog.innerHTML = '';
+        });
+
+        function connect() {
+            if (ws) ws.close();
+
+            ws = new WebSocket('ws://localhost:8080/avatar');
+
+            ws.onopen = () => {
+                updateConnectionStatus('connected', 'WebSocket: Connected');
+                logMessage('Connected to avatar service');
+            };
+
+            ws.onclose = () => {
+                updateConnectionStatus('disconnected', 'WebSocket: Disconnected');
+                logMessage('Disconnected from avatar service');
+            };
+
+            ws.onmessage = (event) => {
+                logMessage(`Received: ${event.data}`);
+            };
+
+            ws.onerror = (error) => {
+                logMessage(`WebSocket error: ${error}`);
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function sendViseme(viseme) {
+            const message = {
+                visemes: [{ t: 0, v: viseme }],
+                emotion: 'neutral',
+                drive: { energy: 0.5, focus: 0.5, confidence: 0.5 }
+            };
+            sendMessage(message);
+        }
+
+        function sendEmotion(emotion) {
+            const message = {
+                visemes: [{ t: 0, v: 'neutral' }],
+                emotion: emotion,
+                drive: { energy: 0.5, focus: 0.5, confidence: 0.5 }
+            };
+            sendMessage(message);
+        }
+
+        function updateDriveState() {
+            const energy = parseFloat(document.getElementById('energy-slider').value);
+            const focus = parseFloat(document.getElementById('focus-slider').value);
+            const confidence = parseFloat(document.getElementById('confidence-slider').value);
+
+            document.getElementById('energy-value').textContent = energy.toFixed(1);
+            document.getElementById('focus-value').textContent = focus.toFixed(1);
+            document.getElementById('confidence-value').textContent = confidence.toFixed(1);
+
+            const message = {
+                visemes: [{ t: 0, v: 'neutral' }],
+                emotion: 'neutral',
+                drive: { energy, focus, confidence }
+            };
+            sendMessage(message);
+        }
+
+        function playBasicSequence() {
+            const sequence = [
+                { t: 0.0, v: 'neutral' },
+                { t: 0.5, v: 'AA' },
+                { t: 1.0, v: 'OH' },
+                { t: 1.5, v: 'EE' },
+                { t: 2.0, v: 'neutral' }
+            ];
+
+            const message = {
+                visemes: sequence,
+                emotion: 'neutral',
+                drive: { energy: 0.5, focus: 0.5, confidence: 0.5 }
+            };
+            sendMessage(message);
+        }
+
+        function playComplexSequence() {
+            const sequence = [
+                { t: 0.0, v: 'neutral' },
+                { t: 0.2, v: 'AA' },
+                { t: 0.4, v: 'OH' },
+                { t: 0.6, v: 'EE' },
+                { t: 0.8, v: 'MM' },
+                { t: 1.0, v: 'AA' },
+                { t: 1.2, v: 'neutral' }
+            ];
+
+            const emotions = ['neutral', 'warm', 'excited', 'calm'];
+
+            emotions.forEach((emotion, index) => {
+                setTimeout(() => {
+                    const message = {
+                        visemes: sequence,
+                        emotion: emotion,
+                        drive: {
+                            energy: 0.3 + (index * 0.2),
+                            focus: 0.5,
+                            confidence: 0.5
+                        }
+                    };
+                    sendMessage(message);
+                }, index * 2000);
+            });
+        }
+
+        function stopSequence() {
+            const message = {
+                visemes: [{ t: 0, v: 'neutral' }],
+                emotion: 'neutral',
+                drive: { energy: 0.5, focus: 0.5, confidence: 0.5 }
+            };
+            sendMessage(message);
+        }
+
+        function sendMessage(message) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(message));
+                logMessage(`Sent: ${JSON.stringify(message, null, 2)}`);
+            } else {
+                logMessage('WebSocket not connected');
+            }
+        }
+
+        function updateConnectionStatus(status, text) {
+            connectionStatus.className = `status ${status}`;
+            connectionStatus.textContent = text;
+        }
+
+        function logMessage(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.innerHTML = `<strong>${timestamp}:</strong> ${message}`;
+            messageLog.appendChild(logEntry);
+            messageLog.scrollTop = messageLog.scrollHeight;
+        }
+
+        // Auto-connect on page load
+        window.addEventListener('load', () => {
+            setTimeout(connect, 1000);
+        });
+    </script>
+</body>
+</html>

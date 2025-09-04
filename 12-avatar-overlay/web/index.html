@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenWebUI Avatar Overlay</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="avatar-container">
+        <canvas id="avatar-canvas" width="800" height="600"></canvas>
+
+        <!-- Debug overlay (only shown in debug mode) -->
+        <div id="debug-overlay" class="debug-hidden">
+            <div class="debug-panel">
+                <h3>Avatar Debug Info</h3>
+                <div class="debug-item">
+                    <span>FPS:</span>
+                    <span id="debug-fps">0</span>
+                </div>
+                <div class="debug-item">
+                    <span>Viseme:</span>
+                    <span id="debug-viseme">neutral</span>
+                </div>
+                <div class="debug-item">
+                    <span>Emotion:</span>
+                    <span id="debug-emotion">neutral</span>
+                </div>
+                <div class="debug-item">
+                    <span>Energy:</span>
+                    <span id="debug-energy">0.5</span>
+                </div>
+                <div class="debug-item">
+                    <span>WebSocket:</span>
+                    <span id="debug-ws">disconnected</span>
+                </div>
+                <div class="debug-item">
+                    <span>Quality:</span>
+                    <span id="debug-quality">high</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Connection status indicator -->
+        <div id="connection-status" class="status-disconnected">
+            <div class="status-indicator"></div>
+            <span id="status-text">Connecting...</span>
+        </div>
+
+        <!-- Loading overlay -->
+        <div id="loading-overlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Loading Avatar...</div>
+        </div>
+
+        <!-- Error overlay -->
+        <div id="error-overlay" class="error-hidden">
+            <div class="error-message">
+                <h3>Connection Error</h3>
+                <p id="error-text">Unable to connect to avatar service</p>
+                <button id="retry-button">Retry</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test controls (only in development) -->
+    <div id="test-controls" class="test-hidden">
+        <div class="test-panel">
+            <h3>Test Controls</h3>
+            <div class="test-section">
+                <h4>Viseme Test</h4>
+                <button id="test-viseme-aa">AA</button>
+                <button id="test-viseme-oh">OH</button>
+                <button id="test-viseme-ee">EE</button>
+                <button id="test-viseme-neutral">Neutral</button>
+            </div>
+            <div class="test-section">
+                <h4>Emotion Test</h4>
+                <button id="test-emotion-neutral">Neutral</button>
+                <button id="test-emotion-warm">Warm</button>
+                <button id="test-emotion-excited">Excited</button>
+                <button id="test-emotion-calm">Calm</button>
+                <button id="test-emotion-focused">Focused</button>
+            </div>
+            <div class="test-section">
+                <h4>Energy Test</h4>
+                <label for="test-energy-slider">Energy Level:</label>
+                <input type="range" id="test-energy-slider" min="0" max="1" step="0.1" value="0.5">
+                <span id="test-energy-value">0.5</span>
+            </div>
+            <div class="test-section">
+                <h4>Sequence Test</h4>
+                <button id="test-sequence">Play Sequence</button>
+                <button id="test-stop">Stop</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
