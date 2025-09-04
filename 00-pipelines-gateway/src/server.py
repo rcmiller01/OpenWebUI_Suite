@@ -89,7 +89,14 @@ async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
             if audio_ref:
                 obs = await S["multimodal"].post("/mm/audio_json",
                                                  {"audio_url": audio_ref})
-        except Exception:
+        except Exception as e:
+            # Log audio_json fallback failure to telemetry
+            await S["telemetry"].post("/log",
+                                      {"event": "multimodal_fallback",
+                                       "payload": {"from": "audio_json",
+                                                   "to": "none",
+                                                   "intent": lane,
+                                                   "error": str(e)}})
             obs = None
 
         # If we got transcript/summary, inject it
@@ -213,11 +220,20 @@ async def _post(ctx: Dict[str, Any]) -> Dict[str, Any]:
                            {"user_id": user_id, "text": assistant,
                             "tags": ["assistant"], "confidence": 0.6})
     # Policy validation and repair
-    pol = await S["policy"].post("/policy/validate",
-                                 {"lane": ctx["intent"]["intent"],
-                                  "text": ctx["final_text"]})
-    if not pol.get("ok", True):
-        ctx["final_text"] = pol.get("repaired", ctx["final_text"])
+    try:
+        pol = await S["policy"].post("/policy/validate", {
+            "lane": ctx.get("intent", {}).get("intent", "general"),
+            "text": ctx.get("final_text", "")
+        })
+        if not pol.get("ok", True):
+            ctx["final_text"] = pol.get("repaired", ctx["final_text"])
+    except Exception as e:
+        # Log policy validation failure but don't block the response
+        await S["telemetry"].post("/log",
+                                  {"event": "policy_validation_error",
+                                   "payload": {"error": str(e),
+                                               "intent": ctx.get("intent",
+                                                                 {})}})
     # Telemetry
     await S["telemetry"].post("/log",
                               {"event": "chat_turn",

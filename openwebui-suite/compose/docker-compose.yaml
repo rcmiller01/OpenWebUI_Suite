@@ -12,7 +12,7 @@ services:
     
     environment:
       # Ollama configuration
-      OLLAMA_HOST: ${OLLAMA_HOST:-http://core2-gpu:11434}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://localhost:11434}
       
       # Plugin configuration
       OWUI_MEMORY_PATH: /data/memory.sqlite

@@ -56,7 +56,7 @@ widgets:
 # Environment variable defaults
 environment:
   defaults:
-    OLLAMA_HOST: "http://core2-gpu:11434"
+    OLLAMA_HOST: "http://localhost:11434"
     OWUI_MEMORY_PATH: "/data/memory.sqlite"
     OWUI_PLUGIN_TIMEOUT: "30"
     OWUI_WIDGET_CACHE_TTL: "3600"
