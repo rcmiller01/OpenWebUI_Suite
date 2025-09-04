@@ -87,8 +87,8 @@ async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
             # If you have an audio reference in the message:
             audio_ref = user_msg.get("audio_ref")
             if audio_ref:
-                obs = await S["multimodal"].post("/mm/audio",
-                                                 {"audio_ref": audio_ref})
+                obs = await S["multimodal"].post("/mm/audio_json",
+                                                 {"audio_url": audio_ref})
         except Exception:
             obs = None
 
@@ -156,6 +156,7 @@ async def _mid(ctx: Dict[str, Any]) -> Dict[str, Any]:
 
     # Tool exposure
     tools_schema = await S["tools"].get("/tools")
+    tool_list = tools_schema.get("tools", [])
 
     # Decide router
     needs_remote = bool(ctx.get("intent", {}).get("needs_remote"))
@@ -163,7 +164,7 @@ async def _mid(ctx: Dict[str, Any]) -> Dict[str, Any]:
 
     # 1) Primary draft (non-stream)
     draft_req = {"messages": messages, "temperature": 0.4,
-                 "tools": tools_schema}
+                 "tools": tool_list}
     draft = await router.chat_complete(draft_req)
     draft_text = draft["choices"][0]["message"].get("content", "")
 
@@ -181,7 +182,8 @@ async def _mid(ctx: Dict[str, Any]) -> Dict[str, Any]:
         messages += [{"role": "tool", "name": tool_name,
                      "content": json.dumps(tool_res)}]
         draft = await router.chat_complete({"messages": messages,
-                                           "temperature": 0.3})
+                                            "temperature": 0.3,
+                                            "tools": tool_list})
         draft_text = draft["choices"][0]["message"].get("content", "")
 
     # 2) Optional hidden helper critique + merge

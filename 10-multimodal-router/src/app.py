@@ -39,6 +39,13 @@ class ImageIn(BaseModel):
     prompt:    Optional[str] = None
 
 
+class AudioJsonIn(BaseModel):
+    audio_url: Optional[str] = None
+    audio_b64: Optional[str] = None
+    prompt: Optional[str] = None
+    prefer_remote: bool = False
+
+
 def _or_headers() -> Dict[str, str]:
     if not OPENROUTER_API_KEY:
         raise HTTPException(500, "OPENROUTER_API_KEY missing")
@@ -47,6 +54,7 @@ def _or_headers() -> Dict[str, str]:
         "HTTP-Referer":  "http://localhost",
         "X-Title":       "OWUI-Pipelines-MMR"
     }
+
 
 def _make_image_content(req: ImageIn) -> Any:
     if req.image_url:
@@ -166,6 +174,53 @@ async def analyze_audio(
         out2 = r2.json()
 
     summary = out2["choices"][0]["message"].get("content", "").strip()
+    return {
+        "transcript": transcript,
+        "observations": [{"label": "summary", "text": summary}]
+    }
+
+
+@app.post("/mm/audio_json")
+async def analyze_audio_json(req: AudioJsonIn):
+    """
+    Analyze audio from JSON input (URL or base64).
+    Uses local STT, then summarizes with OpenRouter.
+    Normalized output: { transcript: "...", observations: [] }
+    """
+    if req.audio_url:
+        async with httpx.AsyncClient(timeout=60) as c:
+            r = await c.get(req.audio_url)
+            r.raise_for_status()
+            data = r.content
+    elif req.audio_b64:
+        data = base64.b64decode(req.audio_b64)
+    else:
+        raise HTTPException(400, "Provide audio_url or audio_b64")
+
+    # Local STT
+    files = {"audio": ("input.wav", data, "audio/wav")}
+    async with httpx.AsyncClient(timeout=120) as c:
+        r = await c.post(STT_URL, files=files)
+        r.raise_for_status()
+        stt = r.json()
+
+    transcript = stt.get("text", "").strip()
+
+    # Summarize with OpenRouter (text)
+    prompt = req.prompt or PROMPT_AUDIO
+    payload = {
+        "model": VISION_MODEL,
+        "messages": [{"role": "user", "content":
+                      f"{prompt}\n\nTRANSCRIPT:\n{transcript[:8000]}"}],
+        "temperature": 0.2
+    }
+    async with httpx.AsyncClient(timeout=60) as c:
+        r2 = await c.post(OPENROUTER_URL, json=payload, headers=_or_headers())
+        r2.raise_for_status()
+        out2 = r2.json()
+
+    summary = out2["choices"][0]["message"].get("content", "").strip()
+
     return {
         "transcript": transcript,
         "observations": [{"label": "summary", "text": summary}]

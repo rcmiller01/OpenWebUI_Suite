@@ -8,7 +8,7 @@ OR_KEY = os.getenv("OPENROUTER_API_KEY")
 OR_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
 OR_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-OLLAMA = os.getenv("OLLAMA_BASE", "http://192.168.50.38:11434/")
+OLLAMA = os.getenv("OLLAMA_BASE", "http://localhost:11434")
 LOCAL_MODEL = os.getenv("DEFAULT_LOCAL_MODEL", "qwen2.5:3b-instruct-q4_K_M")
 
 
@@ -87,12 +87,14 @@ class ModelRouter:
         data = {
             "model": model,
             "messages": prompt["messages"],
+            "stream": False,
             "options": {"temperature": prompt.get("temperature", 0.4)}
         }
         async with httpx.AsyncClient(timeout=120) as c:
-            r = await c.post(f"{OLLAMA}/v1/chat/completions", json=data)
+            r = await c.post(f"{OLLAMA.rstrip('/')}/api/chat", json=data)
             r.raise_for_status()
-            return r.json()
+            msg = r.json().get("message", {}).get("content", "")
+            return {"choices": [{"message": {"content": msg}}]}
 
     async def _ollama_stream(self, prompt: Dict[str, Any]) \
             -> AsyncIterator[str]:
@@ -104,8 +106,7 @@ class ModelRouter:
             "options": {"temperature": prompt.get("temperature", 0.4)}
         }
         async with httpx.AsyncClient(timeout=None) as c:
-            async with c.stream("POST",
-                                f"{OLLAMA}/v1/chat/completions",
+            async with c.stream("POST", f"{OLLAMA.rstrip('/')}/api/chat",
                                 json=data) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
@@ -113,8 +114,9 @@ class ModelRouter:
                         continue
                     try:
                         j = httpx.Response(200, text=line).json()
-                        yield j.get("choices", [{}])[0] \
-                               .get("delta", {}).get("content", "")
+                        content = j.get("message", {}).get("content", "")
+                        if content:
+                            yield content
                     except Exception:
                         continue
 
