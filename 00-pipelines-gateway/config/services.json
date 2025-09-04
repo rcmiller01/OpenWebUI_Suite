@@ -1,0 +1,15 @@
+{
+  "intent_router": "http://localhost:8101",
+  "memory": "http://localhost:8102",
+  "feeling": "http://localhost:8103",
+  "merger": "http://localhost:8104",
+  "drive": "http://localhost:8105",
+  "tools": "http://localhost:8106",
+  "tandoor": "http://localhost:8107",
+  "openbb": "http://localhost:8108",
+  "multimodal": "http://localhost:8110",
+  "stt_tts": "http://localhost:8111",
+  "policy": "http://localhost:8113",
+  "telemetry": "http://localhost:8114",
+  "fastvlm": "http://localhost:8115"
+}
