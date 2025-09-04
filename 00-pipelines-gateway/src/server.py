@@ -54,16 +54,28 @@ async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
         obs = None
         try:
             obs = await S["fastvlm"].post("/analyze", payload)
-        except Exception:
+        except Exception as e:
+            # Log fallback to telemetry
+            await S["telemetry"].post("/log",
+                                      {"event": "multimodal_fallback",
+                                       "payload": {"from": "fastvlm",
+                                                   "to": "multimodal",
+                                                   "intent": lane,
+                                                   "error": str(e)}})
             try:
                 obs = await S["multimodal"].post("/mm/image", payload)
-            except Exception:
+            except Exception as e2:
+                # Log complete failure
+                await S["telemetry"].post("/log",
+                                          {"event": "multimodal_failure",
+                                           "payload": {"intent": lane,
+                                                       "error": str(e2)}})
                 obs = None
 
         if obs and obs.get("observations"):
             # Join all observations into a compact paragraph/bullets
             joined = "\n".join(f"- {o.get('text', '')}"
-                              for o in obs["observations"] if o.get("text"))
+                               for o in obs["observations"] if o.get("text"))
             _inject_obs(joined)
 
     # --- AUDIO path ---
@@ -76,7 +88,7 @@ async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
             audio_ref = user_msg.get("audio_ref")
             if audio_ref:
                 obs = await S["multimodal"].post("/mm/audio",
-                                                {"audio_ref": audio_ref})
+                                                 {"audio_ref": audio_ref})
         except Exception:
             obs = None
 
@@ -198,6 +210,12 @@ async def _post(ctx: Dict[str, Any]) -> Dict[str, Any]:
     await S["memory"].post("/mem/candidates",
                            {"user_id": user_id, "text": assistant,
                             "tags": ["assistant"], "confidence": 0.6})
+    # Policy validation and repair
+    pol = await S["policy"].post("/policy/validate",
+                                 {"lane": ctx["intent"]["intent"],
+                                  "text": ctx["final_text"]})
+    if not pol.get("ok", True):
+        ctx["final_text"] = pol.get("repaired", ctx["final_text"])
     # Telemetry
     await S["telemetry"].post("/log",
                               {"event": "chat_turn",

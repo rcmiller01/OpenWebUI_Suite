@@ -1,12 +1,16 @@
 """
 BYOF Tool Hub - Bring Your Own Function Tool Hub
 Main FastAPI application for tool registry and execution
+
+Note: Finance tools are handled by the dedicated openbb-sidecar
+service (port 8120) and are not implemented in this tool hub to
+maintain separation of concerns.
 """
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 import uvicorn
 import logging
 

@@ -6,7 +6,7 @@
   "drive": "http://localhost:8105",
   "tools": "http://localhost:8106",
   "tandoor": "http://localhost:8107",
-  "openbb": "http://localhost:8108",
+  "openbb": "http://localhost:8120",
   "multimodal": "http://localhost:8110",
   "stt_tts": "http://localhost:8111",
   "policy": "http://localhost:8113",
