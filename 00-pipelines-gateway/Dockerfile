@@ -1,5 +1,5 @@
-# Dockerfile for Pipelines Gateway
-FROM python:3.11-slim
+ARG BASE_IMAGE=owui/base:py311
+FROM ${BASE_IMAGE} AS runtime
 
 LABEL org.opencontainers.image.title="OpenWebUI Pipelines Gateway"
 LABEL org.opencontainers.image.description="OpenAI-compatible chat completions with plugin hooks"
@@ -8,31 +8,26 @@ LABEL org.opencontainers.image.version="1.0.0"
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Copy service requirements & install with global constraints
+COPY requirements.txt ./requirements.txt
+RUN pip install -r requirements.txt -c /app/constraints.txt
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
+# Copy application code (after deps for layer cache)
 COPY . .
-
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash app && \
-    chown -R app:app /app
-USER app
 
 # Expose port
 EXPOSE 8088
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8088/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request,sys;\
+import time;\
+url='http://localhost:8088/health';\
+\
+\ntry:\
+    urllib.request.urlopen(url,timeout=3).read();\
+except Exception as e:\
+    sys.exit(1)" || exit 1
 
 # Set default environment variables
 ENV HOST=0.0.0.0

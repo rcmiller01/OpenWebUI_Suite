@@ -7,7 +7,7 @@ Optimized for <50ms response time with <100MB footprint.
 
 import time
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from .classifier import IntentClassifier
@@ -31,26 +31,50 @@ rule_engine: Optional[RuleEngine] = None
 
 class AttachmentInfo(BaseModel):
     """Attachment metadata"""
-    type: str = Field(..., description="Attachment type (image, audio, document, etc.)")
-    size: Optional[int] = Field(None, description="File size in bytes")
-    mime_type: Optional[str] = Field(None, description="MIME type")
-    filename: Optional[str] = Field(None, description="Original filename")
+    type: str = Field(
+        ..., description="Attachment type (image, audio, document, etc.)"
+    )
+    size: Optional[int] = Field(
+        None, description="File size in bytes"
+    )
+    mime_type: Optional[str] = Field(
+        None, description="MIME type"
+    )
+    filename: Optional[str] = Field(
+        None, description="Original filename"
+    )
 
 
 class ClassificationRequest(BaseModel):
     """Request model for intent classification"""
-    text: str = Field(..., description="Input text to classify", max_length=10000)
-    last_intent: Optional[str] = Field(None, description="Previously detected intent for context")
-    attachments: Optional[List[AttachmentInfo]] = Field(None, description="Attached files/media")
+    text: str = Field(
+        ..., description="Input text to classify", max_length=10000
+    )
+    last_intent: Optional[str] = Field(
+        None, description="Previously detected intent for context"
+    )
+    attachments: Optional[List[AttachmentInfo]] = Field(
+        None, description="Attached files/media"
+    )
 
 
 class ClassificationResponse(BaseModel):
     """Response model for intent classification"""
-    intent: str = Field(..., description="Detected intent category")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
-    needs_remote: bool = Field(..., description="Whether remote processing is recommended")
-    processing_time_ms: float = Field(..., description="Processing time in milliseconds")
-    reasoning: Optional[str] = Field(None, description="Classification reasoning (debug)")
+    intent: str = Field(
+        ..., description="Detected intent category"
+    )
+    confidence: float = Field(
+        ..., ge=0.0, le=1.0, description="Confidence score"
+    )
+    needs_remote: bool = Field(
+        ..., description="Whether remote processing is recommended"
+    )
+    processing_time_ms: float = Field(
+        ..., description="Processing time in milliseconds"
+    )
+    reasoning: Optional[str] = Field(
+        None, description="Classification reasoning (debug)"
+    )
 
 
 class HealthResponse(BaseModel):
@@ -73,7 +97,7 @@ async def startup_event():
         rule_engine = RuleEngine()
         logger.info("Rule engine initialized")
         
-        # Initialize ML classifier  
+    # Initialize ML classifier
         classifier = IntentClassifier()
         await classifier.load_model()
         logger.info("Intent classifier initialized")
@@ -99,21 +123,33 @@ async def health_check():
     )
 
 
+@app.get("/healthz")
+async def healthz():
+    return {"ok": True, "components": {
+        "rule_engine": bool(rule_engine),
+        "classifier": bool(classifier)
+    }}
+
+
 @app.post("/classify", response_model=ClassificationResponse)
 async def classify_intent(request: ClassificationRequest):
     """
     Classify user input intent and determine remote processing needs
     
-    Returns intent category, confidence score, and remote processing recommendation.
+    Returns intent category, confidence score, and remote processing
+    recommendation.
     """
     start_time = time.time()
     
     try:
         # Input validation
         if not request.text.strip():
-            raise HTTPException(status_code=400, detail="Text input cannot be empty")
+            raise HTTPException(
+                status_code=400, detail="Text input cannot be empty"
+            )
         
         # Step 1: Rule-based pre-filtering for obvious cases
+        assert rule_engine is not None  # runtime invariant after startup
         rule_result = rule_engine.classify(
             text=request.text,
             attachments=request.attachments,
@@ -133,10 +169,11 @@ async def classify_intent(request: ClassificationRequest):
             )
         
         # Step 2: ML classifier for ambiguous cases
+        assert classifier is not None  # runtime invariant after startup
         ml_result = await classifier.classify(
             text=request.text,
             attachments=request.attachments,
-            last_intent=request.last_intent
+            last_intent=request.last_intent,
         )
         
         # Step 3: Combine rule and ML results
@@ -163,19 +200,24 @@ async def classify_intent(request: ClassificationRequest):
             confidence=final_confidence,
             needs_remote=needs_remote,
             processing_time_ms=processing_time,
-            reasoning=f"ML + Rules: {ml_result.get('reasoning', 'Combined classification')}"
+            reasoning=(
+                f"ML + Rules: "
+                f"{ml_result.get('reasoning', 'Combined classification')}"
+            ),
         )
         
     except Exception as e:
         logger.error(f"Classification error: {e}")
-        raise HTTPException(status_code=500, detail=f"Classification failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Classification failed: {str(e)}"
+        )
 
 
 def _should_use_remote(
-    text: str, 
-    intent: str, 
-    confidence: float, 
-    attachments: Optional[List[AttachmentInfo]] = None
+    text: str,
+    intent: str,
+    confidence: float,
+    attachments: Optional[List[AttachmentInfo]] = None,
 ) -> bool:
     """
     Determine if remote processing is needed based on multiple factors
@@ -206,7 +248,9 @@ def _should_use_remote(
     ]
     
     text_lower = text.lower()
-    complex_count = sum(1 for pattern in complex_patterns if pattern in text_lower)
+    complex_count = sum(
+        1 for pattern in complex_patterns if pattern in text_lower
+    )
     if complex_count >= 2:
         return True
     

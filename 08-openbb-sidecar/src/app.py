@@ -183,6 +183,12 @@ async def health():
     return {"status": "healthy", "openbb_connected": True}
 
 
+@app.get("/healthz")
+async def healthz():
+    """Kubernetes style healthz alias"""
+    return {"ok": True, "service": "openbb-sidecar"}
+
+
 @app.get("/market/snapshot")
 async def market_snapshot():
     """
@@ -208,7 +214,9 @@ async def market_snapshot():
                 "dowjones": {
                     "price": float(market_data.dowjones.price),
                     "change": float(market_data.dowjones.change),
-                    "change_percent": float(market_data.dowjones.change_percent)
+                    "change_percent": float(
+                        market_data.dowjones.change_percent
+                    )
                 }
             },
             "commodities": {

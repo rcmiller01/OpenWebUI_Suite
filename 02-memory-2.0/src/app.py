@@ -38,6 +38,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+@app.get("/healthz")
+async def healthz():
+    return {"ok": True, "service": "memory-2.0"}
+
 # Database initialization
 def init_database():
     """Initialize SQLite database for memory storage"""

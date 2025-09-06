@@ -66,6 +66,12 @@ async def health_check():
     return {"status": "healthy", "service": "drive-state"}
 
 
+@app.get("/healthz")
+async def healthz():
+    """Kubernetes style healthz alias"""
+    return {"ok": True, "service": "drive-state"}
+
+
 @app.get("/drive/get", response_model=DriveStateResponse)
 async def get_drive_state(user_id: str = Query(..., description="User ID")):
     """Get current drive state for user"""
@@ -73,42 +79,70 @@ async def get_drive_state(user_id: str = Query(..., description="User ID")):
         state = drive_manager.get_drive_state(user_id)
         return DriveStateResponse(**state.to_dict())
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get drive state: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get drive state: {str(e)}"
+        )
 
 
 @app.post("/drive/update", response_model=DriveStateResponse)
-async def update_drive_state(request: UpdateRequest,
-                           user_id: str = Query(..., description="User ID")):
+async def update_drive_state(
+    request: UpdateRequest,
+    user_id: str = Query(..., description="User ID")
+):
     """Update drive state with deltas"""
     try:
         # Validate delta values
         for drive, delta in request.delta.items():
-            if drive not in ['energy', 'sociability', 'curiosity', 'empathy_reserve', 'novelty_seek']:
-                raise HTTPException(status_code=400, detail=f"Invalid drive: {drive}")
+            if drive not in [
+                'energy', 'sociability', 'curiosity',
+                'empathy_reserve', 'novelty_seek'
+            ]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid drive: {drive}"
+                )
             if not isinstance(delta, (int, float)):
-                raise HTTPException(status_code=400, detail=f"Delta must be numeric: {drive}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Delta must be numeric: {drive}"
+                )
 
-        state = drive_manager.update_drive_state(user_id, request.delta, request.reason)
+        state = drive_manager.update_drive_state(
+            user_id,
+            request.delta,
+            request.reason
+        )
         return DriveStateResponse(**state.to_dict())
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update drive state: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update drive state: {str(e)}"
+        )
 
 
 @app.post("/drive/policy", response_model=PolicyResponse)
-async def get_style_policy(user_id: str = Query(..., description="User ID")):
+async def get_style_policy(
+    user_id: str = Query(..., description="User ID")
+):
     """Get style policy based on current drive state"""
     try:
         policy = drive_manager.get_style_policy(user_id)
         return PolicyResponse(**policy)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get style policy: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get style policy: {str(e)}"
+        )
 
 
 @app.get("/drive/history")
-async def get_drive_history(user_id: str = Query(..., description="User ID"),
-                          limit: int = Query(10, description="Number of recent states to return")):
+async def get_drive_history(
+    user_id: str = Query(..., description="User ID"),
+    limit: int = Query(10, description="Number of recent states to return")
+):
     """Get recent drive state history (simplified - returns current state)"""
     try:
         state = drive_manager.get_drive_state(user_id)
@@ -116,10 +150,15 @@ async def get_drive_history(user_id: str = Query(..., description="User ID"),
             "user_id": user_id,
             "current_state": state.to_dict(),
             "history_limit": limit,
-            "note": "Full history tracking not implemented - returns current state"
+            "note": (
+                "Full history tracking not implemented - returns current state"
+            )
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get drive history: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get drive history: {str(e)}"
+        )
 
 
 if __name__ == "__main__":

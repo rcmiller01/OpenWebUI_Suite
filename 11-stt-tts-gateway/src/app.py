@@ -192,6 +192,12 @@ async def health_check():
         audio_storage_available=AUDIO_STORAGE_PATH.exists()
     )
 
+
+@app.get("/healthz")
+async def healthz():
+    """Kubernetes style healthz alias"""
+    return {"ok": True, "service": "stt-tts-gateway"}
+
 @app.post("/stt", response_model=STTResponse)
 async def speech_to_text(request: STTRequest):
     """Convert speech to text"""
