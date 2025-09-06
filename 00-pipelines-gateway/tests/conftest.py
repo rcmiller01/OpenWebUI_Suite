@@ -1,6 +1,13 @@
 import pytest
 from fastapi.testclient import TestClient
-from src.server import app
+import sys
+import os
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+SRC_DIR = os.path.join(BASE_DIR, 'src')
+for p in (BASE_DIR, SRC_DIR):
+    if p not in sys.path:
+        sys.path.insert(0, p)
+from server import app  # type: ignore  # noqa: E402
 
 
 class Dummy:

@@ -1,6 +1,6 @@
 # 00-pipelines-gateway/src/server.py
 from __future__ import annotations
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import Dict, Any, List, AsyncIterator
 import json
@@ -9,6 +9,7 @@ import time
 import asyncio
 import uuid
 import contextlib
+from pathlib import Path
 
 from src.util.http import (  # type: ignore
     Svc,
@@ -47,6 +48,30 @@ TASK_WORKER_ENABLED = os.getenv(
 TASK_QUEUE_NAME = os.getenv("TASK_QUEUE_NAME", "pipeline_tasks")
 TASK_DQL_NAME = os.getenv("TASK_DQL_NAME", "pipeline_tasks_dlq")
 
+# --- File / snippet feature config ---
+FILE_STORAGE_PATH = os.getenv("FILE_STORAGE_PATH", "data/files")
+MAX_FILE_BYTES = int(os.getenv("MAX_FILE_BYTES", str(2 * 1024 * 1024)))  # 2MB
+ALLOWED_FILE_MIME = set(
+    os.getenv(
+        "ALLOWED_FILE_MIME",
+        (
+            "text/plain,text/markdown,application/json,"  # noqa: E501
+            "text/x-python,text/x-sh,application/javascript"
+        ),
+    ).split(",")
+)
+ENABLE_FILE_SNIPPETS = (
+    os.getenv("ENABLE_FILE_SNIPPETS", "true").lower() == "true"
+)
+FILE_SNIPPET_MAX_CHARS = int(
+    os.getenv("FILE_SNIPPET_MAX_CHARS", "1200") or 1200
+)
+FILE_SNIPPET_EXTS = set(
+    os.getenv(
+        "FILE_SNIPPET_EXTS", ".txt,.md,.py,.json,.js,.ts,.sh"
+    ).split(",")
+)
+
 if ENABLE_OTEL:
     try:
         from opentelemetry import trace  # type: ignore
@@ -55,7 +80,7 @@ if ENABLE_OTEL:
         from opentelemetry.sdk.trace.export import (  # type: ignore
             BatchSpanProcessor,
         )
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (  # type: ignore  # noqa: E501
             OTLPSpanExporter,  # type: ignore
         )
         from opentelemetry.instrumentation.fastapi import (  # type: ignore
@@ -91,6 +116,12 @@ _metrics: dict[str, int] = {
     "timeouts_total": 0,
     "tool_calls_total": 0,
     "task_enqueued_total": 0,
+    # routing + files
+    "remote_decisions_total": 0,
+    "local_decisions_total": 0,
+    "files_uploaded_total": 0,
+    "file_bytes_total": 0,
+    "file_snippet_injected_total": 0,
 }
 
 
@@ -181,6 +212,9 @@ async def _load_services():
     with open(os.getenv("SERVICES_PATH", "config/services.json"), "r") as f:
         app.state.services = {k: Svc(v) for k, v in json.load(f).items()}
     # Task queue setup
+    # File storage path
+    Path(FILE_STORAGE_PATH).mkdir(parents=True, exist_ok=True)
+    app.state.files = {}  # simple in-memory index
     global _task_queue, _worker_task
     _task_queue = TaskQueue(REDIS_URL)
     if TASK_WORKER_ENABLED:
@@ -255,8 +289,13 @@ async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
             ]
         )
         if code_fence or keyword_hit or long_input or upscale_signal:
-            # mark remote need; downstream router uses this flag
             intent["needs_remote"] = True  # type: ignore
+
+    # Header override (force_remote set in endpoint, forwarded via ctx)
+    if ctx.get("force_remote") is True:
+        intent["needs_remote"] = True  # type: ignore
+    elif ctx.get("force_remote") is False:
+        intent["needs_remote"] = False  # type: ignore
 
     def _inject_obs(obs_text: str):
         if not obs_text:
@@ -442,6 +481,45 @@ async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
     addendum.append(f"[AFFECT]\n{json.dumps(affect)}")
     addendum.append(f"[TONE_POLICY]\n{','.join(tone.get('tone_policy', []))}")
     addendum.append(f"[DRIVE_HINTS]\n{json.dumps(policy.get('hints', {}))}")
+    # File snippet injection
+    if ENABLE_FILE_SNIPPETS:
+        user_msg = ctx["messages"][-1]
+        file_ids: list[str] = []
+        if isinstance(user_msg, dict) and user_msg.get("file_ids"):
+            file_ids.extend([
+                fid for fid in (user_msg.get("file_ids") or [])
+                if isinstance(fid, str)
+            ])
+        import re as _re
+        found = _re.findall(r"\[file:([a-fA-F0-9]{8,})\]", user_text)
+        file_ids.extend(found)
+        snippets = []
+        seen = set()
+        for fid in file_ids:
+            if fid in seen:
+                continue
+            seen.add(fid)
+            meta = getattr(app.state, "files", {}).get(fid)  # type: ignore
+            if not meta:
+                continue
+            try:
+                with open(meta.get("path"), "rb") as fh:
+                    raw = fh.read(FILE_SNIPPET_MAX_CHARS * 4)
+                text = raw.decode("utf-8", errors="replace")
+                snippet = text[:FILE_SNIPPET_MAX_CHARS]
+                if snippet.strip():
+                    label = (
+                        f"FILE {meta.get('filename')} "
+                        f"(first {len(snippet)} chars)\n"
+                    )
+                    snippets.append(label + snippet)
+            except Exception:
+                continue
+        if snippets:
+            ctx.setdefault("system_addenda", []).append(
+                "[FILE_SNIPPETS]\n" + "\n\n".join(snippets)
+            )
+            _metrics["file_snippet_injected_total"] += len(snippets)
     # Insert lane policy system prompt (if any) first for precedence
     if lane_policy_prompt:
         ctx.setdefault("system_addenda", []).insert(0, lane_policy_prompt)
@@ -513,6 +591,10 @@ async def _mid(ctx: Dict[str, Any]) -> Dict[str, Any]:
     # Decide router
     needs_remote = bool(ctx.get("intent", {}).get("needs_remote"))
     router = await get_model_router(needs_remote=needs_remote, model_hint=None)
+    if needs_remote:
+        _metrics["remote_decisions_total"] += 1
+    else:
+        _metrics["local_decisions_total"] += 1
 
     # Draft with iterative tool loop
     draft, messages_after = await _tool_call_loop(
@@ -578,7 +660,16 @@ async def chat_completions(req: Request):
     body = await req.json()
     if not body.get("messages"):
         return {"error": "messages required"}
-    ctx = {"messages": body["messages"], "user_id": body.get("user", "anon")}
+    force_remote = None
+    if req.headers.get("X-Force-Remote", "").lower() in ("1", "true", "yes"):
+        force_remote = True
+    if req.headers.get("X-Force-Local", "").lower() in ("1", "true", "yes"):
+        force_remote = False
+    ctx = {
+        "messages": body["messages"],
+        "user_id": body.get("user", "anon"),
+        "force_remote": force_remote,
+    }
     ctx = await _pre(ctx)
     ctx = await _mid(ctx)
     ctx = await _post(ctx)
@@ -603,7 +694,16 @@ async def chat_completions_stream(req: Request):
     body = await req.json()
     if not body.get("messages"):
         return {"error": "messages required"}
-    ctx = {"messages": body["messages"], "user_id": body.get("user", "anon")}
+    force_remote = None
+    if req.headers.get("X-Force-Remote", "").lower() in ("1", "true", "yes"):
+        force_remote = True
+    if req.headers.get("X-Force-Local", "").lower() in ("1", "true", "yes"):
+        force_remote = False
+    ctx = {
+        "messages": body["messages"],
+        "user_id": body.get("user", "anon"),
+        "force_remote": force_remote,
+    }
     ctx = await _pre(ctx)
     S = app.state.services
     sys_msgs = [{"role": "system", "content": _sys_prompt_base()}]
@@ -684,6 +784,84 @@ async def list_tools():
     except Exception:
         data = []
     return {"object": "list", "data": data}
+
+
+# ---- File management endpoints ----
+def _is_text_mime(mime: str | None) -> bool:
+    if not mime:
+        return False
+    return mime.split(";")[0] in ALLOWED_FILE_MIME
+
+
+@app.post("/v1/files")
+async def upload_file(file: UploadFile = File(...)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="filename required")
+    ctype = file.content_type or "application/octet-stream"
+    if not _is_text_mime(ctype):
+        raise HTTPException(status_code=400, detail="unsupported mime")
+    data = await file.read()
+    if len(data) > MAX_FILE_BYTES:
+        raise HTTPException(status_code=400, detail="file too large")
+    fid = uuid.uuid4().hex
+    safe_name = file.filename.replace("..", "_")
+    out_path = str(Path(FILE_STORAGE_PATH) / f"{fid}_{safe_name}")
+    with open(out_path, "wb") as f:
+        f.write(data)
+    meta = {
+        "id": fid,
+        "filename": file.filename,
+        "bytes": len(data),
+        "mime": ctype,
+        "path": out_path,
+        "created": int(time.time()),
+    }
+    app.state.files[fid] = meta  # type: ignore
+    _metrics["files_uploaded_total"] += 1
+    _metrics["file_bytes_total"] += len(data)
+    return {"object": "file", **meta}
+
+
+@app.get("/v1/files")
+async def list_files():
+    return {
+        "object": "list",
+        "data": list(getattr(app.state, "files", {}).values()),
+    }
+
+
+@app.get("/v1/files/{file_id}")
+async def get_file(file_id: str):
+    meta = getattr(app.state, "files", {}).get(file_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="not found")
+    return {"object": "file", **meta}
+
+
+@app.get("/v1/files/{file_id}/content")
+async def get_file_content(file_id: str):
+    meta = getattr(app.state, "files", {}).get(file_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        with open(meta["path"], "rb") as f:
+            raw = f.read(min(FILE_SNIPPET_MAX_CHARS * 4, MAX_FILE_BYTES))
+        text = raw.decode("utf-8", errors="replace")
+        return {"id": file_id, "content": text}
+    except Exception:
+        raise HTTPException(status_code=500, detail="read error")
+
+
+@app.delete("/v1/files/{file_id}")
+async def delete_file(file_id: str):
+    meta = getattr(app.state, "files", {}).pop(file_id, None)
+    if not meta:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        os.remove(meta["path"])
+    except Exception:
+        pass
+    return {"deleted": True, "id": file_id}
 
 
 @app.get("/metrics")
