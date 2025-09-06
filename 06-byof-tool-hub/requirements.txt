@@ -1,5 +1,9 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-python-multipart==0.0.6
-jsonschema==4.19.2
+"""BYOF Tool Hub dependencies.
+Core libs via constraints; service-specific libs may be added/pinned here.
+"""
+
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+jsonschema

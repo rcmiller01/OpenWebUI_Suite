@@ -1,0 +1,276 @@
+version: '3.9'
+services:
+  00-pipelines-gateway:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/00-pipelines-gateway
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  01-intent-router:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/01-intent-router
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  02-memory-2-0:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/02-memory-2.0
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  03-feeling-engine:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/03-feeling-engine
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  04-hidden-multi-expert-merger:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/04-hidden-multi-expert-merger
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  05-drive-state:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/05-drive-state
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  06-byof-tool-hub:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/06-byof-tool-hub
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  07-tandoor-sidecar:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/07-tandoor-sidecar
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  08-openbb-sidecar:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/08-openbb-sidecar
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  09-proactive-daemon:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/09-proactive-daemon
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  10-multimodal-router:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/10-multimodal-router
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  11-stt-tts-gateway:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/11-stt-tts-gateway
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  12-avatar-overlay:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/12-avatar-overlay
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  13-policy-guardrails:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/13-policy-guardrails
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  14-telemetry-cache:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/14-telemetry-cache
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  15-bytebot-gateway:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/15-bytebot-gateway
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  16-fastvlm-sidecar:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/16-fastvlm-sidecar
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  openwebui-suite:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/openwebui-suite
+    restart: unless-stopped
+    env_file:
+    - ../.env.example
+    networks:
+    - owui
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - python -c 'import socket; exit(0)'
+      interval: 30s
+      timeout: 5s
+      retries: 3
+networks:
+  owui:
+    driver: bridge
+volumes: {}

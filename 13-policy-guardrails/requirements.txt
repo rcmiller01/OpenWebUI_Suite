@@ -1,4 +1,8 @@
-fastapi==0.100.0
-uvicorn==0.23.0
-pydantic==1.10.7
-jsonschema==4.17.3
+"""Policy Guardrails service dependencies.
+Migrated to Pydantic v2 (core stack via constraints).
+"""
+
+fastapi
+uvicorn
+pydantic
+jsonschema

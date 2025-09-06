@@ -1,0 +1,39 @@
+graph TD
+    00-pipelines-gateway[00-pipelines-gateway]
+    01-intent-router[01-intent-router]
+    02-memory-2-0[02-memory-2.0]
+    03-feeling-engine[03-feeling-engine]
+    04-hidden-multi-expert-merger[04-hidden-multi-expert-merger]
+    05-drive-state[05-drive-state]
+    06-byof-tool-hub[06-byof-tool-hub]
+    07-tandoor-sidecar[07-tandoor-sidecar]
+    08-openbb-sidecar[08-openbb-sidecar]
+    09-proactive-daemon[09-proactive-daemon]
+    10-multimodal-router[10-multimodal-router]
+    11-stt-tts-gateway[11-stt-tts-gateway]
+    12-avatar-overlay[12-avatar-overlay]
+    13-policy-guardrails[13-policy-guardrails]
+    14-telemetry-cache[14-telemetry-cache]
+    15-bytebot-gateway[15-bytebot-gateway]
+    16-fastvlm-sidecar[16-fastvlm-sidecar]
+    openwebui-suite[openwebui-suite]
+
+    %% Core request flow
+    00-pipelines-gateway --> 01-intent-router
+    00-pipelines-gateway --> 02-memory-2-0
+    00-pipelines-gateway --> 03-feeling-engine
+    00-pipelines-gateway --> 04-hidden-multi-expert-merger
+    00-pipelines-gateway --> 06-byof-tool-hub
+    00-pipelines-gateway --> 13-policy-guardrails
+    00-pipelines-gateway --> 14-telemetry-cache
+
+    %% Multimodal & media
+    10-multimodal-router --> 11-stt-tts-gateway
+    10-multimodal-router --> 16-fastvlm-sidecar
+
+    %% Secondary flows
+    15-bytebot-gateway --> 11-stt-tts-gateway
+    09-proactive-daemon --> 00-pipelines-gateway
+
+    %% Observability sink
+    14-telemetry-cache --> 00-pipelines-gateway

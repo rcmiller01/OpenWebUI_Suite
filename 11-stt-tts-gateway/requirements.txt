@@ -1,7 +1,12 @@
-fastapi>=0.104.0
-uvicorn>=0.24.0
-pydantic>=2.5.0
-python-multipart>=0.0.6
+"""STT / TTS Gateway dependencies.
+Core web stack via constraints. Heavy ML libs kept with minimums.
+Consider creating a gpu profile for tighter pinning later.
+"""
+
+fastapi
+uvicorn
+pydantic
+python-multipart
 faster-whisper>=0.10.0
 torch>=2.1.0
 torchaudio>=2.1.0

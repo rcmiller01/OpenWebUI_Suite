@@ -1,0 +1,98 @@
+# Dependency Audit
+
+Total unique packages: 33
+
+## Potential version conflicts
+
+- **fastapi**:
+  - 00-pipelines-gateway: `>=0.104.1`
+  - 01-intent-router: `>=0.104.1`
+  - 02-memory-2.0: `==0.104.1`
+  - 03-feeling-engine: `==0.104.1`
+  - 04-hidden-multi-expert-merger: `==0.104.1`
+  - 05-drive-state: `==0.104.1`
+  - 06-byof-tool-hub: `==0.104.1`
+  - 07-tandoor-sidecar: `==0.104.1`
+  - 08-openbb-sidecar: `==0.115.0`
+  - 10-multimodal-router: `==0.115.0`
+  - 11-stt-tts-gateway: `>=0.104.0`
+  - 13-policy-guardrails: `==0.100.0`
+  - 14-telemetry-cache: `==0.115.0`
+  - 15-bytebot-gateway: `==0.115.0`
+  - 16-fastvlm-sidecar: `==0.115.0`
+- **uvicorn**:
+  - 00-pipelines-gateway: `>=0.24.0`
+  - 01-intent-router: `>=0.24.0`
+  - 02-memory-2.0: `==0.24.0`
+  - 03-feeling-engine: `==0.24.0`
+  - 04-hidden-multi-expert-merger: `==0.24.0`
+  - 05-drive-state: `==0.24.0`
+  - 06-byof-tool-hub: `==0.24.0`
+  - 07-tandoor-sidecar: `==0.24.0`
+  - 08-openbb-sidecar: `==0.30.5`
+  - 10-multimodal-router: `==0.30.5`
+  - 11-stt-tts-gateway: `>=0.24.0`
+  - 13-policy-guardrails: `==0.23.0`
+  - 14-telemetry-cache: `==0.32.0`
+  - 15-bytebot-gateway: `==0.32.0`
+  - 16-fastvlm-sidecar: `==0.30.5`
+- **pydantic**:
+  - 00-pipelines-gateway: `>=2.5.0`
+  - 01-intent-router: `>=2.5.0`
+  - 02-memory-2.0: `==2.5.0`
+  - 03-feeling-engine: `==2.5.0`
+  - 04-hidden-multi-expert-merger: `==2.5.0`
+  - 05-drive-state: `==2.5.0`
+  - 06-byof-tool-hub: `==2.5.0`
+  - 07-tandoor-sidecar: `==2.5.0`
+  - 08-openbb-sidecar: `==2.8.2`
+  - 10-multimodal-router: `==2.8.2`
+  - 11-stt-tts-gateway: `>=2.5.0`
+  - 13-policy-guardrails: `==1.10.7`
+  - 14-telemetry-cache: `==2.9.0`
+  - 15-bytebot-gateway: `==2.9.0`
+  - 16-fastvlm-sidecar: `==2.8.2`
+- **httpx**:
+  - 00-pipelines-gateway: `>=0.25.0`
+  - 01-intent-router: `>=0.25.0`
+  - 07-tandoor-sidecar: `==0.25.2`
+  - 08-openbb-sidecar: `==0.27.0`
+  - 10-multimodal-router: `==0.27.0`
+  - 15-bytebot-gateway: `==0.27.0`
+  - 16-fastvlm-sidecar: `==0.27.0`
+- **python-multipart**:
+  - 00-pipelines-gateway: `>=0.0.6`
+  - 01-intent-router: `>=0.0.6`
+  - 02-memory-2.0: `==0.0.6`
+  - 03-feeling-engine: `==0.0.6`
+  - 04-hidden-multi-expert-merger: `==0.0.6`
+  - 05-drive-state: `==0.0.6`
+  - 06-byof-tool-hub: `==0.0.6`
+  - 07-tandoor-sidecar: `==0.0.6`
+  - 08-openbb-sidecar: `==0.0.12`
+  - 10-multimodal-router: `==0.0.12`
+  - 11-stt-tts-gateway: `>=0.0.6`
+  - 15-bytebot-gateway: `==0.0.12`
+- **redis**:
+  - 00-pipelines-gateway: `>=5.0.0`
+  - 14-telemetry-cache: `==5.1.0`
+- **pytest**:
+  - 00-pipelines-gateway: `>=8.2.0`
+  - 01-intent-router: `>=7.4.0`
+- **jsonschema**:
+  - 06-byof-tool-hub: `==4.19.2`
+  - 13-policy-guardrails: `==4.17.3`
+  - 14-telemetry-cache: `==4.17.3`
+- **numpy**:
+  - 08-openbb-sidecar: `==1.26.4`
+  - 11-stt-tts-gateway: `>=1.24.0`
+- **torch**:
+  - 11-stt-tts-gateway: `>=2.1.0`
+  - 16-fastvlm-sidecar: `==2.3.1`
+
+## Heavy packages detected
+- accelerate: used in 16-fastvlm-sidecar
+- faster-whisper: used in 11-stt-tts-gateway
+- torch: used in 11-stt-tts-gateway, 16-fastvlm-sidecar
+- torchaudio: used in 11-stt-tts-gateway
+- transformers: used in 16-fastvlm-sidecar

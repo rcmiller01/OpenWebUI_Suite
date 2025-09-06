@@ -1,8 +1,12 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.5
-pydantic==2.8.2
+"""FastVLM Sidecar dependencies.
+Core stack via constraints; model libs pinned for reproducibility.
+"""
+
+fastapi
+uvicorn[standard]
+pydantic
+httpx
 torch==2.3.1
 transformers==4.43.4
 accelerate==0.33.0
 Pillow==10.4.0
-httpx==0.27.0

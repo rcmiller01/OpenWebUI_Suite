@@ -1,0 +1,52 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: gateway
+    static_configs:
+      - targets: ["gateway:8088"]
+  - job_name: intent-router
+    static_configs:
+      - targets: ["intent-router:8101"]
+  - job_name: memory
+    static_configs:
+      - targets: ["memory:8102"]
+  - job_name: feeling-engine
+    static_configs:
+      - targets: ["feeling-engine:8103"]
+  - job_name: merger
+    static_configs:
+      - targets: ["merger:8104"]
+  - job_name: drive-state
+    static_configs:
+      - targets: ["drive-state:8105"]
+  - job_name: tool-hub
+    static_configs:
+      - targets: ["tool-hub:8106"]
+  - job_name: tandoor
+    static_configs:
+      - targets: ["tandoor:8107"]
+  - job_name: openbb
+    static_configs:
+      - targets: ["openbb:8108"]
+  - job_name: proactive
+    static_configs:
+      - targets: ["proactive-daemon:8090"]
+  - job_name: multimodal-router
+    static_configs:
+      - targets: ["multimodal-router:8110"]
+  - job_name: stt-tts
+    static_configs:
+      - targets: ["stt-tts:8089"]
+  - job_name: policy
+    static_configs:
+      - targets: ["policy:8113"]
+  - job_name: telemetry
+    static_configs:
+      - targets: ["telemetry:8000"]
+  - job_name: bytebot
+    static_configs:
+      - targets: ["bytebot:8116"]
+  - job_name: fastvlm
+    static_configs:
+      - targets: ["fastvlm:8115"]

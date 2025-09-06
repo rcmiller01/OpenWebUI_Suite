@@ -8,6 +8,9 @@ x-common-env: &common-env
   PYTHONUNBUFFERED: '1'
   LOG_LEVEL: info
   PIP_INDEX_URL: https://pypi.org/simple
+  # Inject secrets at runtime (see secrets: section)
+  OLLAMA_API_KEY_FILE: /run/secrets/ollama_api_key
+  OPENBB_API_KEY_FILE: /run/secrets/openbb_api_key
 
 x-common-depends: &depends-redis
   depends_on:
@@ -17,7 +20,12 @@ services:
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
-    profiles: [core]
+    profiles: [core, telemetry]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
 
   gateway:
     build:
@@ -32,6 +40,19 @@ services:
       - "8100:8100"
     profiles: [core]
     <<: *depends-redis
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8100/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   intent-router:
     build:
@@ -40,6 +61,19 @@ services:
     environment:
       <<: *common-env
     profiles: [core]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8101/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   memory:
     build:
@@ -50,6 +84,19 @@ services:
     volumes:
       - memory_data:/app
     profiles: [memory]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8102/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
 
   feeling-engine:
     build:
@@ -58,6 +105,11 @@ services:
     environment:
       <<: *common-env
     profiles: [affect]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8103/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   merger:
     build:
@@ -66,6 +118,11 @@ services:
     environment:
       <<: *common-env
     profiles: [core]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8104/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   drive-state:
     build:
@@ -74,6 +131,11 @@ services:
     environment:
       <<: *common-env
     profiles: [extras]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8105/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   tool-hub:
     build:
@@ -82,6 +144,11 @@ services:
     environment:
       <<: *common-env
     profiles: [tools]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8106/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   tandoor:
     build:
@@ -90,6 +157,11 @@ services:
     environment:
       <<: *common-env
     profiles: [extras]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8107/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   openbb:
     build:
@@ -98,6 +170,19 @@ services:
     environment:
       <<: *common-env
     profiles: [finance]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8108/healthz || exit 1"]
+      interval: 45s
+      timeout: 8s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.50'
+          memory: 1G
+        reservations:
+          cpus: '0.50'
+          memory: 512M
 
   proactive-daemon:
     build:
@@ -106,6 +191,11 @@ services:
     environment:
       <<: *common-env
     profiles: [extras]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import socket;exit(0)' || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
 
   multimodal-router:
     build:
@@ -114,6 +204,11 @@ services:
     environment:
       <<: *common-env
     profiles: [vision]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8110/healthz || exit 1"]
+      interval: 30s
+      timeout: 7s
+      retries: 4
 
   stt-tts:
     build:
@@ -124,6 +219,20 @@ services:
     profiles: [speech]
     volumes:
       - tts_audio:/app/audio
+      - models_cache:/models
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8089/healthz || exit 1"]
+      interval: 45s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
+          memory: 3G
+        reservations:
+          cpus: '0.50'
+          memory: 1G
 
   policy:
     build:
@@ -132,6 +241,11 @@ services:
     environment:
       <<: *common-env
     profiles: [policy]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8113/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   telemetry:
     build:
@@ -140,6 +254,11 @@ services:
     environment:
       <<: *common-env
     profiles: [telemetry]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8114/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   bytebot:
     build:
@@ -148,6 +267,11 @@ services:
     environment:
       <<: *common-env
     profiles: [extras]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8116/healthz || exit 1"]
+      interval: 45s
+      timeout: 6s
+      retries: 5
 
   fastvlm:
     build:
@@ -156,8 +280,95 @@ services:
     environment:
       <<: *common-env
     profiles: [vision]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8115/healthz || exit 1"]
+      interval: 35s
+      timeout: 8s
+      retries: 4
+    volumes:
+      - models_cache:/models
+    deploy:
+      resources:
+        limits:
+          cpus: '2.00'
+          memory: 4G
+        reservations:
+          cpus: '0.50'
+          memory: 1G
+
+  # Observability Stack (optional profiles)
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: [telemetry]
+    volumes:
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: [telemetry]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 40s
+      timeout: 5s
+      retries: 3
+
+  loki:
+    image: grafana/loki:2.9.3
+    profiles: [telemetry]
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "3100:3100"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
+      interval: 40s
+      timeout: 5s
+      retries: 3
+
+  promtail:
+    image: grafana/promtail:2.9.3
+    profiles: [telemetry]
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - /var/log:/var/log:ro
+    depends_on:
+      - loki
+
+secrets:
+  ollama_api_key:
+    file: ./secrets/ollama_api_key.txt
+  openbb_api_key:
+    file: ./secrets/openbb_api_key.txt
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password.txt
+
+configs:
+  prometheus_config:
+    file: ./telemetry/prometheus.yml
 
 volumes:
   gateway_files:
   memory_data:
   tts_audio:
+  models_cache:
+  prometheus_data:
+  grafana_data:

@@ -18,16 +18,9 @@ COPY . .
 # Expose port
 EXPOSE 8088
 
-# Health check
+# Health check (align with /healthz for quick probe)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request,sys;\
-import time;\
-url='http://localhost:8088/health';\
-\
-\ntry:\
-    urllib.request.urlopen(url,timeout=3).read();\
-except Exception as e:\
-    sys.exit(1)" || exit 1
+    CMD python -c "import urllib.request,sys;\nurl='http://localhost:8088/healthz';\n\ntry:\n urllib.request.urlopen(url,timeout=3).read();\nexcept Exception:\n sys.exit(1)" || exit 1
 
 # Set default environment variables
 ENV HOST=0.0.0.0

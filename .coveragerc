@@ -1,0 +1,11 @@
+[run]
+branch = True
+omit =
+    */venv/*
+    */tests/*
+    11-stt-tts-gateway/*
+    16-fastvlm-sidecar/*
+
+[report]
+skip_empty = True
+show_missing = True
