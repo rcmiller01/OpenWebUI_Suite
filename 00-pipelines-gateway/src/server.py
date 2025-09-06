@@ -204,6 +204,36 @@ async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
     affect, tone = affect_tone
     drive, policy = drive_policy
 
+    # Optional policy lane application to build lane-specific system prompt
+    # (non-blocking; falls back silently on error)
+    lane_policy_prompt = None
+    try:
+        lane_name = lane or "general"
+        if lane_name and lane_name not in ("general", "mm_image", "mm_audio"):
+            apply_payload = {
+                "lane": lane_name,
+                "system": _sys_prompt_base(),
+                "user": user_text,
+                "affect": affect or {
+                    "emotion": "neutral", "intensity": 0.0
+                },
+                "drive": {
+                    "energy": drive.get("energy", 0),
+                    "focus": drive.get("focus", 0)
+                }
+            }
+            pol_apply = await S["policy"].post("/policy/apply", apply_payload)
+            lane_policy_prompt = pol_apply.get("system_final")
+            ctx["policy_validators"] = pol_apply.get("validators", [])
+    except Exception as e:
+        await S["telemetry"].post(
+            "/log",
+            {
+                "event": "policy_apply_error",
+                "payload": {"error": str(e), "lane": lane}
+            }
+        )
+
     # Assemble system prompt
     addendum = []
     addendum.append(f"[MEMORY SUMMARY]\n{summary.get('summary', '')}")
@@ -213,6 +243,9 @@ async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
     addendum.append(f"[AFFECT]\n{json.dumps(affect)}")
     addendum.append(f"[TONE_POLICY]\n{','.join(tone.get('tone_policy', []))}")
     addendum.append(f"[DRIVE_HINTS]\n{json.dumps(policy.get('hints', {}))}")
+    # Insert lane policy system prompt (if any) first for precedence
+    if lane_policy_prompt:
+        ctx.setdefault("system_addenda", []).insert(0, lane_policy_prompt)
     ctx.setdefault("system_addenda", []).append("\n\n".join(addendum))
 
     # Store for mid/post
