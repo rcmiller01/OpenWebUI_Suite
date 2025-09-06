@@ -26,6 +26,19 @@ RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "0") or 0)
 RATE_LIMIT_BURST = int(
     os.getenv("RATE_LIMIT_BURST", str(max(1, RATE_LIMIT_PER_MIN)))
 )
+REMOTE_CODE_ROUTING = (
+    os.getenv("REMOTE_CODE_ROUTING", "true").lower() == "true"
+)
+REMOTE_CODE_MIN_CHARS = int(
+    os.getenv("REMOTE_CODE_MIN_CHARS", "350") or 350
+)
+REMOTE_CODE_KEYWORDS = os.getenv(
+    "REMOTE_CODE_KEYWORDS",
+    (
+        "optimize,refactor,algorithm,complexity,big o,asyncio,"  # noqa: E501
+        "deadlock,thread,socket,performance,vectorize"
+    ),
+).lower().split(",")
 PIPELINE_TIMEOUT = int(os.getenv("PIPELINE_TIMEOUT_SECONDS", "0") or 0)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 TASK_WORKER_ENABLED = os.getenv(
@@ -220,6 +233,30 @@ async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
         intent = {"intent": "general"}
     ctx["intent"] = intent
     lane = intent.get("intent")
+
+    # --- Heuristic: decide if remote (larger) model needed ---
+    if REMOTE_CODE_ROUTING:
+        text_lc = user_text.lower()
+        code_fence = (
+            "```" in user_text or any(
+                sym in user_text for sym in [
+                    "def ", "class ", "import ", "#include",
+                    "public static", "async def"
+                ]
+            )
+        )
+        keyword_hit = any(
+            k.strip() and k.strip() in text_lc for k in REMOTE_CODE_KEYWORDS
+        )
+        long_input = len(user_text) >= REMOTE_CODE_MIN_CHARS
+        upscale_signal = any(
+            kw in text_lc for kw in [
+                "gpt-4", "larger model", "highest quality", "best model"
+            ]
+        )
+        if code_fence or keyword_hit or long_input or upscale_signal:
+            # mark remote need; downstream router uses this flag
+            intent["needs_remote"] = True  # type: ignore
 
     def _inject_obs(obs_text: str):
         if not obs_text:
