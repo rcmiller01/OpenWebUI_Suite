@@ -5,7 +5,13 @@ import os
 import hmac
 import hashlib
 import json
-from typing import Any, Dict
+import contextvars
+from typing import Any, Dict, Optional
+
+# Per-request correlation id (set by gateway middleware)
+REQUEST_ID: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "request_id", default=None
+)
 
 
 class Svc:
@@ -14,20 +20,31 @@ class Svc:
         self.secret = os.getenv("SUITE_SHARED_SECRET")  # optional
 
     async def get(self, path: str, **params):
+        headers = {}
+        rid = REQUEST_ID.get()
+        if rid:
+            headers["X-Request-Id"] = rid
         async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.get(f"{self.base}{path}", params=params)
+            r = await c.get(
+                f"{self.base}{path}", params=params, headers=headers
+            )
             r.raise_for_status()
             return r.json()
 
     async def post(self, path: str, payload: Dict[str, Any]):
         headers = {}
+        rid = REQUEST_ID.get()
+        if rid:
+            headers["X-Request-Id"] = rid
         if self.secret is not None and payload is not None:
             raw = json.dumps(payload, separators=(",", ":")).encode()
-            mac = hmac.new(self.secret.encode(), raw,
-                           hashlib.sha256).hexdigest()
+            mac = hmac.new(
+                self.secret.encode(), raw, hashlib.sha256
+            ).hexdigest()
             headers["X-SUITE-SIG"] = mac
         async with httpx.AsyncClient(timeout=60) as c:
-            r = await c.post(f"{self.base}{path}", json=payload,
-                             headers=headers)
+            r = await c.post(
+                f"{self.base}{path}", json=payload, headers=headers
+            )
             r.raise_for_status()
             return r.json()

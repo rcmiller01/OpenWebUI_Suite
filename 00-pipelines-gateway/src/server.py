@@ -1,31 +1,31 @@
 # 00-pipelines-gateway/src/server.py
 from __future__ import annotations
-from fastapi import FastAPI, Request
-from typing import Dict, Any, List
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import StreamingResponse
+from typing import Dict, Any, List, AsyncIterator
 import json
 import os
 import time
-import signal
-import sys
+import asyncio
+import uuid
 
-from src.util.http import Svc
-from src.router.providers import get_model_router
+from src.util.http import Svc, REQUEST_ID  # type: ignore
+from src.router.providers import get_model_router  # type: ignore
 
-# Make host/port configurable
-HOST = os.getenv("HOST", "0.0.0.0")
-PORT = int(os.getenv("PORT", 8080))
+app = FastAPI(title="Pipelines Gateway", version="0.3.0")
 
-app = FastAPI(title="Pipelines Gateway", version="0.2.0")
 
-# Graceful shutdown handler
-def signal_handler(sig, frame):
-    print("Received shutdown signal, closing gracefully...")
-    # Add any cleanup code here if needed
-    sys.exit(0)
-
-# Register signal handlers for graceful shutdown
-signal.signal(signal.SIGTERM, signal_handler)
-signal.signal(signal.SIGINT, signal_handler)
+# Middleware: correlation / request id
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    rid = request.headers.get("X-Request-Id") or uuid.uuid4().hex
+    token = REQUEST_ID.set(rid)
+    try:
+        response: Response = await call_next(request)
+        response.headers["X-Request-Id"] = rid
+        return response
+    finally:
+        REQUEST_ID.reset(token)
 
 
 @app.on_event("startup")
@@ -40,16 +40,24 @@ def _sys_prompt_base() -> str:
 
 
 async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
-    """Enrich ctx with intent, memory, affect, drive; build system addendum"""
+    """Enrich ctx with intent, memory, affect, drive; build system addendum.
+    Fault tolerant & partly parallel."""
     S = app.state.services
-    user_text = ctx["messages"][-1]["content"]
-    # 1) intent
-    intent = await S["intent_router"].post("/classify", {"text": user_text})
-    ctx["intent"] = intent
-
-    # Multimodal integration: inject vision/audio observations
-    lane = intent.get("intent")
     user_msg = ctx["messages"][-1]
+    user_text = user_msg["content"]
+
+    # Intent first (drives lanes)
+    try:
+        intent = await S["intent_router"].post(
+            "/classify", {"text": user_text}
+        )
+    except Exception as e:
+        await S["telemetry"].post(
+            "/log", {"event": "intent_error", "payload": {"error": str(e)}}
+        )
+        intent = {"intent": "general"}
+    ctx["intent"] = intent
+    lane = intent.get("intent")
 
     def _inject_obs(obs_text: str):
         if not obs_text:
@@ -126,19 +134,75 @@ async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
                     bullets.append(f"- {o['text']}")
             _inject_obs("\n".join(bullets))
 
-    # 2) memory
-    mem = await S["memory"].get("/mem/retrieve",
-                                user_id=ctx.get("user_id", "anon"),
-                                intent=intent["intent"], k=4)
-    summary = await S["memory"].get("/mem/summary",
-                                    user_id=ctx.get("user_id", "anon"))
-    # 3) affect
-    affect = await S["feeling"].post("/affect/analyze", {"text": user_text})
-    tone = await S["feeling"].post("/affect/tone", {"affect": affect})
-    # 4) drive
-    drive = await S["drive"].get("/drive/get",
-                                 user_id=ctx.get("user_id", "anon"))
-    policy = await S["drive"].post("/drive/policy", {"state": drive})
+    # Parallel enrichment (memory summary / retrieval, affect + tone, drive)
+    user_id = ctx.get("user_id", "anon")
+
+    async def _mem_retrieve():
+        try:
+            return await S["memory"].get(
+                "/mem/retrieve", user_id=user_id,
+                intent=intent.get("intent"), k=4
+            )
+        except Exception as e:
+            await S["telemetry"].post(
+                "/log",
+                {
+                    "event": "memory_retrieve_error",
+                    "payload": {"error": str(e)}
+                }
+            )
+            return {"items": []}
+
+    async def _mem_summary():
+        try:
+            return await S["memory"].get("/mem/summary", user_id=user_id)
+        except Exception as e:
+            await S["telemetry"].post(
+                "/log",
+                {
+                    "event": "memory_summary_error",
+                    "payload": {"error": str(e)}
+                }
+            )
+            return {"summary": ""}
+
+    async def _affect():
+        try:
+            a = await S["feeling"].post(
+                "/affect/analyze", {"text": user_text}
+            )
+            t = await S["feeling"].post(
+                "/affect/tone", {"affect": a}
+            )
+            return a, t
+        except Exception as e:
+            await S["telemetry"].post(
+                "/log",
+                {"event": "affect_error", "payload": {"error": str(e)}}
+            )
+            return {}, {"tone_policy": []}
+
+    async def _drive():
+        try:
+            d = await S["drive"].get(
+                "/drive/get", user_id=user_id
+            )
+            p = await S["drive"].post(
+                "/drive/policy", {"state": d}
+            )
+            return d, p
+        except Exception as e:
+            await S["telemetry"].post(
+                "/log",
+                {"event": "drive_error", "payload": {"error": str(e)}}
+            )
+            return {}, {"hints": {}}
+
+    mem, summary, affect_tone, drive_policy = await asyncio.gather(
+        _mem_retrieve(), _mem_summary(), _affect(), _drive()
+    )
+    affect, tone = affect_tone
+    drive, policy = drive_policy
 
     # Assemble system prompt
     addendum = []
@@ -158,14 +222,46 @@ async def _pre(ctx: Dict[str, Any]) -> Dict[str, Any]:
     return ctx
 
 
-async def _tool_call_loop(messages: List[Dict[str, Any]]) \
-        -> List[Dict[str, Any]]:
-    """Simple tool-calling loop via Tool Hub"""
-    S = app.state.services
-    tools_schema = await S["tools"].get("/tools")
-    # Attach tools to the next generation request; when tool_call returned
-    # -> exec then append result
-    return tools_schema  # we return schema; caller decides when to exec
+async def _execute_tool(
+    S, call: Dict[str, Any], messages: List[Dict[str, Any]]
+):
+    tool_name = call["function"]["name"]
+    try:
+        tool_args = json.loads(call["function"].get("arguments", "{}"))
+    except Exception:
+        tool_args = {}
+    tool_res = await S["tools"].post(
+        "/tools/exec", {"name": tool_name, "arguments": tool_args}
+    )
+    messages.append({
+        "role": "tool", "name": tool_name,
+        "content": json.dumps(tool_res)
+    })
+    return messages
+
+ 
+async def _tool_call_loop(
+    router, S, base_messages: List[Dict[str, Any]],
+    tool_list: List[Dict[str, Any]], max_iters: int = 3
+):
+    messages = list(base_messages)
+    for _ in range(max_iters):
+        draft = await router.chat_complete({
+            "messages": messages,
+            "temperature": 0.3,
+            "tools": tool_list
+        })
+        msg = draft["choices"][0]["message"]
+        tcs = msg.get("tool_calls")
+        if not tcs:
+            return draft, messages
+        # execute sequentially (could parallelize later)
+        for call in tcs:
+            messages = await _execute_tool(S, call, messages)
+        # append assistant stub so conversation context grows
+        if msg.get("content"):
+            messages.append({"role": "assistant", "content": msg["content"]})
+    return draft, messages
 
 
 async def _mid(ctx: Dict[str, Any]) -> Dict[str, Any]:
@@ -185,29 +281,11 @@ async def _mid(ctx: Dict[str, Any]) -> Dict[str, Any]:
     needs_remote = bool(ctx.get("intent", {}).get("needs_remote"))
     router = await get_model_router(needs_remote=needs_remote, model_hint=None)
 
-    # 1) Primary draft (non-stream)
-    draft_req = {"messages": messages, "temperature": 0.4,
-                 "tools": tool_list}
-    draft = await router.chat_complete(draft_req)
+    # Draft with iterative tool loop
+    draft, messages_after = await _tool_call_loop(
+        router, S, messages, tool_list
+    )
     draft_text = draft["choices"][0]["message"].get("content", "")
-
-    # Optional: Handle tool calls (v1)
-    tool_calls = draft["choices"][0]["message"].get("tool_calls")
-    if tool_calls:
-        # Execute exactly one tool (v1), append result to messages,
-        # regenerate short answer
-        call = tool_calls[0]
-        tool_name = call["function"]["name"]
-        tool_args = json.loads(call["function"].get("arguments", "{}"))
-        tool_res = await S["tools"].post("/tools/exec",
-                                         {"name": tool_name,
-                                          "arguments": tool_args})
-        messages += [{"role": "tool", "name": tool_name,
-                     "content": json.dumps(tool_res)}]
-        draft = await router.chat_complete({"messages": messages,
-                                            "temperature": 0.3,
-                                            "tools": tool_list})
-        draft_text = draft["choices"][0]["message"].get("content", "")
 
     # 2) Optional hidden helper critique + merge
     merge_in = {
@@ -251,10 +329,13 @@ async def _post(ctx: Dict[str, Any]) -> Dict[str, Any]:
                                                "intent": ctx.get("intent",
                                                                  {})}})
     # Telemetry
-    await S["telemetry"].post("/log",
-                              {"event": "chat_turn",
-                               "payload": {"intent": ctx.get("intent"),
-                                           "len_out": len(assistant)}})
+    await S["telemetry"].post("/log", {
+        "event": "chat_turn",
+        "payload": {
+            "intent": ctx.get("intent"),
+            "len_out": len(ctx.get("final_text", ""))
+        }
+    })
     return ctx
 
 
@@ -262,24 +343,59 @@ async def _post(ctx: Dict[str, Any]) -> Dict[str, Any]:
 @app.post("/v1/chat/completions")
 async def chat_completions(req: Request):
     body = await req.json()
+    if not body.get("messages"):
+        return {"error": "messages required"}
     ctx = {"messages": body["messages"], "user_id": body.get("user", "anon")}
     ctx = await _pre(ctx)
     ctx = await _mid(ctx)
     ctx = await _post(ctx)
-    # Return OpenAI-shaped response
     return {
-        "id": "owui-pipe-"+str(int(time.time()*1000)),
+        "id": "owui-pipe-" + str(int(time.time() * 1000)),
         "object": "chat.completion",
-        "choices": [{"index": 0,
-                     "message": {"role": "assistant",
-                                 "content": ctx["final_text"]}}],
-        "model": (os.getenv("OPENROUTER_MODEL") if
-                  ctx.get("intent", {}).get("needs_remote") else
-                  os.getenv("DEFAULT_LOCAL_MODEL"))
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": ctx["final_text"]}
+        }],
+        "model": (
+            os.getenv("OPENROUTER_MODEL")
+            if ctx.get("intent", {}).get("needs_remote")
+            else os.getenv("DEFAULT_LOCAL_MODEL")
+        )
     }
+
+
+@app.post("/v1/chat/completions/stream")
+async def chat_completions_stream(req: Request):
+    body = await req.json()
+    if not body.get("messages"):
+        return {"error": "messages required"}
+    ctx = {"messages": body["messages"], "user_id": body.get("user", "anon")}
+    ctx = await _pre(ctx)
+    S = app.state.services
+    sys_msgs = [{"role": "system", "content": _sys_prompt_base()}]
+    for add in ctx.get("system_addenda", []):
+        sys_msgs.append({"role": "system", "content": add})
+    all_msgs = sys_msgs + ctx["messages"]
+    tools_schema = await S["tools"].get("/tools")
+    tool_list = tools_schema.get("tools", [])
+    needs_remote = bool(ctx.get("intent", {}).get("needs_remote"))
+    router = await get_model_router(needs_remote=needs_remote, model_hint=None)
+
+    async def _gen() -> AsyncIterator[bytes]:
+        async for delta in router.chat_stream({
+            "messages": all_msgs,
+            "tools": tool_list
+        }):
+            yield json.dumps({"delta": delta}).encode() + b"\n"
+        yield b"[DONE]"
+
+    return StreamingResponse(_gen(), media_type="application/json")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "service": "pipelines-gateway",
-            "version": "0.2.0"}
+    return {
+        "status": "healthy",
+        "service": "pipelines-gateway",
+        "version": "0.3.0"
+    }
