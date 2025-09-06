@@ -67,6 +67,15 @@ if ENABLE_OTEL:
 _shared_client = None  # reserved for future optimization
 _task_queue: TaskQueue | None = None
 _worker_task: asyncio.Task | None = None
+_metrics: dict[str, int] = {
+    "http_requests_total": 0,
+    "chat_completions_total": 0,
+    "chat_stream_total": 0,
+    "rate_limited_total": 0,
+    "timeouts_total": 0,
+    "tool_calls_total": 0,
+    "task_enqueued_total": 0,
+}
 
 
 # --- Rate Limiting Middleware (simple global or per-user bucket) ---
@@ -89,9 +98,11 @@ async def _rate_limiter(request: Request) -> bool:
 
 @app.middleware("http")
 async def rate_limit_and_timeout(request: Request, call_next):
+    _metrics["http_requests_total"] += 1  # best-effort in-memory counter
     # rate limit
     allowed = await _rate_limiter(request)
     if not allowed:
+        _metrics["rate_limited_total"] += 1
         return Response(status_code=429, content="Rate limit exceeded")
     # timeout wrapper
     if PIPELINE_TIMEOUT and request.url.path.startswith("/v1/chat/"):
@@ -100,6 +111,7 @@ async def rate_limit_and_timeout(request: Request, call_next):
                 call_next(request), timeout=PIPELINE_TIMEOUT
             )
         except asyncio.TimeoutError:
+            _metrics["timeouts_total"] += 1
             return Response(status_code=504, content="Gateway timeout")
     return await call_next(request)
 
@@ -408,6 +420,7 @@ async def _tool_call_loop(
         # execute sequentially (could parallelize later)
         for call in tcs:
             messages = await _execute_tool(S, call, messages)
+            _metrics["tool_calls_total"] += 1
         # append assistant stub so conversation context grows
         if msg.get("content"):
             messages.append({"role": "assistant", "content": msg["content"]})
@@ -499,6 +512,7 @@ async def chat_completions(req: Request):
     ctx = await _pre(ctx)
     ctx = await _mid(ctx)
     ctx = await _post(ctx)
+    _metrics["chat_completions_total"] += 1
     return {
         "id": "owui-pipe-" + str(int(time.time() * 1000)),
         "object": "chat.completion",
@@ -539,6 +553,7 @@ async def chat_completions_stream(req: Request):
             yield json.dumps({"delta": delta}).encode() + b"\n"
         yield b"[DONE]"
 
+    _metrics["chat_stream_total"] += 1
     return StreamingResponse(_gen(), media_type="application/json")
 
 
@@ -549,6 +564,7 @@ async def enqueue_task(req: Request):
         return {"error": "task queue disabled"}
     await _task_queue.connect()
     await _task_queue.enqueue({"messages": body.get("messages", [])}, depth=0)
+    _metrics["task_enqueued_total"] += 1
     return {"enqueued": True}
 
 
@@ -574,3 +590,13 @@ async def health():
         "timeout": PIPELINE_TIMEOUT,
         "task_worker": TASK_WORKER_ENABLED,
     }
+
+
+@app.get("/metrics")
+async def metrics():  # simple in-memory counters (reset on restart)
+    lines: list[str] = []
+    for k, v in _metrics.items():
+        lines.append(f"# TYPE {k} counter")
+        lines.append(f"{k} {v}")
+    body = "\n".join(lines) + "\n"
+    return Response(body, media_type="text/plain; version=0.0.4")
