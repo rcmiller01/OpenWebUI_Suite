@@ -764,6 +764,15 @@ async def health():
     }
 
 
+@app.get("/healthz")
+async def healthz():  # lightweight alias for kube probes
+    return {
+        "ok": True,
+        "service": "pipelines-gateway",
+        "metrics_keys": len(_metrics),
+    }
+
+
 @app.get("/v1/models")
 async def list_models():
     # Minimal static list; real impl could aggregate additional info
