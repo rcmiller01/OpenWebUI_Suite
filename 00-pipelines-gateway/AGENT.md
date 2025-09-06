@@ -12,16 +12,38 @@ Stand up the central OpenAI-compatible Pipelines server (no forking Open WebUI).
 - ✅ Stream single consolidated answer
 
 ### API (in/out)
-- ✅ `POST /v1/chat/completions` → OpenAI stream
-- ✅ Internal plugin bus (Python): `ctx = {user_id, msg, intent?, memory?, affect?, drive?}`
+
+- ✅ `POST /v1/chat/completions` (non-stream)
+- ✅ `POST /v1/chat/completions/stream` (line-delimited JSON stream)
+- ✅ `GET /v1/models` (simple model list)
+- ✅ `GET /v1/tools` (tool schema list)
+- ✅ `GET /metrics` (Prometheus-style counters)
+- ✅ `POST /tasks/enqueue` (enqueue background pipeline task)
+- ✅ `GET /tasks/dlq` (dead-letter queue items)
+- ✅ Internal pipeline context enrichment (intent, memory, affect, drive, policy)
 
 ### Environment Variables
-- `OPENROUTER_API_KEY` - API key for OpenRouter models
-- `MODEL_MAP_PATH` - Path to models configuration (default: `config/models.json`)
-- `TOOLS_REGISTRY_PATH` - Path to tools configuration (default: `config/tools.json`)
-- `LOG_LEVEL` - Logging level (default: `INFO`)
-- `HOST` - Server host (default: `0.0.0.0`)
-- `PORT` - Server port (default: `8088`)
+
+- Core Routing / Models:
+  - `OPENROUTER_API_KEY` – API key for OpenRouter
+  - `OPENROUTER_MODEL` – Default remote model
+  - `DEFAULT_LOCAL_MODEL` – Local (Ollama) model id
+- Observability:
+  - `ENABLE_OTEL` (true/false)
+  - `OTEL_EXPORTER_OTLP_ENDPOINT`
+  - `OTEL_SERVICE_NAME`
+- Rate Limiting / Performance:
+  - `RATE_LIMIT_PER_MIN` – refill rate (tokens/min)
+  - `RATE_LIMIT_BURST` – bucket capacity (defaults to rate)
+  - `PIPELINE_TIMEOUT_SECONDS` – hard timeout for chat requests
+- Queue / Redis:
+  - `REDIS_URL` – redis connection URL
+  - `TASK_WORKER_ENABLED` – enable internal worker loop
+  - `TASK_QUEUE_NAME` / `TASK_DQL_NAME`
+- Security:
+  - `SUITE_SHARED_SECRET` – optional HMAC signing for inter-service calls
+- Misc:
+  - `LOG_LEVEL`, `HOST`, `PORT`
 
 ## Project Structure
 
@@ -49,6 +71,10 @@ Stand up the central OpenAI-compatible Pipelines server (no forking Open WebUI).
 ## Installation & Setup
 
 ### 1. Create Virtual Environment
+
+
+
+
 ```bash
 cd 00-pipelines-gateway
 python -m venv venv
@@ -56,17 +82,20 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 ### 2. Install Dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
 ### 3. Set Environment Variables
+
 ```bash
 export OPENROUTER_API_KEY="your_openrouter_key_here"
 export LOG_LEVEL="DEBUG"  # Optional: for development
 ```
 
 ### 4. Start the Server
+
 ```bash
 uvicorn src.server:app --reload --port 8088 --host 0.0.0.0
 ```
@@ -74,6 +103,7 @@ uvicorn src.server:app --reload --port 8088 --host 0.0.0.0
 ## Usage Examples
 
 ### Basic Chat Completion
+
 ```bash
 curl -X POST "http://localhost:8088/v1/chat/completions" \
   -H "Content-Type: application/json" \
@@ -87,6 +117,7 @@ curl -X POST "http://localhost:8088/v1/chat/completions" \
 ```
 
 ### Streaming Chat Completion
+
 ```bash
 curl -X POST "http://localhost:8088/v1/chat/completions" \
   -H "Content-Type: application/json" \
@@ -100,18 +131,39 @@ curl -X POST "http://localhost:8088/v1/chat/completions" \
 ```
 
 ### List Available Models
+
 ```bash
 curl "http://localhost:8088/v1/models"
 ```
 
 ### List Available Tools
+
 ```bash
 curl "http://localhost:8088/v1/tools"
 ```
 
 ### Health Check
+
 ```bash
 curl "http://localhost:8088/health"
+```
+
+### Metrics
+
+```bash
+curl "http://localhost:8088/metrics"
+```
+
+### Enqueue Background Task
+
+```bash
+curl -X POST "http://localhost:8088/tasks/enqueue" -H 'Content-Type: application/json' -d '{"messages":[{"role":"user","content":"Process later"}]}'
+```
+
+### Dead Letter Queue
+
+```bash
+curl "http://localhost:8088/tasks/dlq"
 ```
 
 ## Hook System
