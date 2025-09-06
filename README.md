@@ -1,4 +1,4 @@
-# OpenWebUI Suite
+# OpenWebUI Suite ![CI](https://github.com/rcmiller01/OpenWebUI_Suite/actions/workflows/ci.yml/badge.svg)
 
 A comprehensive multi-repository project that creates a thin fork of OpenWebUI with a clean extension system, plugin templates, and deployment automation.
 
@@ -124,7 +124,11 @@ This project consists of five interconnected repositories:
 3. **Core Changes**: Minimize changes to `openwebui-core`
 4. **Deployment**: Use unified `docker-compose.yml` with profiles
 5. **Health Checks**: Every FastAPI service now exposes both `/health` and `/healthz`
-6. **Dependency Consistency**: Python services install unpinned requirements constrained via root `constraints.txt` and a shared base Docker image layer for caching
+6. **Dependency Consistency**: Python services install unpinned requirements constrained via root `constraints.txt` and a shared base Docker image (`owui/base:py311`) for caching
+7. **CI Pipeline**: Automated GitHub Actions workflow validates dependency drift, tests, security, SBOM, coverage, and image builds
+8. **Container Standards**: All FastAPI services share a unified Dockerfile pattern (base image, constraints install, `/healthz` healthcheck)
+9. **Observability**: Optional telemetry profile adds Prometheus + Grafana + Loki + Promtail; `telemetry/prometheus.yml` scrapes all service ports
+10. **Secrets Handling**: Runtime secrets mounted via Docker secrets (see `secrets/` placeholders); never commit real keys
 
 ## Release Process
 
@@ -148,8 +152,11 @@ This project consists of five interconnected repositories:
 | Action | Command |
 |--------|---------|
 | Build all images | `make build` |
+| Build base image | `make base-build` |
 | Start core profile | `make up PROFILE=core` |
 | Start everything | `make up PROFILE=all` |
+| Dev core (shortcut) | `make dev:core` |
+| Dev all (shortcut) | `make dev:all` |
 | Stop & remove | `make down` |
 | Validate compose | `make compose-validate` |
 | Smoke tests | `make test` |
@@ -180,4 +187,54 @@ MIT License - see individual repositories for details.
 ---
 
 **Date Created**: September 3, 2025  
-**Status**: Development Setup Phase
+**Status**: Active Development (CI enabled)
+
+## Continuous Integration
+
+- Linting & Types: Configure via `.ruff.toml` and `mypy.ini` (ruff + mypy optional locally)
+
+The GitHub Actions workflow (`.github/workflows/ci.yml`) runs on pushes and pull requests and includes:
+
+- Dependency Drift Check: Ensures all services conform to `constraints.txt`.
+- Test Suite: Fast subset of tests (skips heavy ML services by default).
+- Heavy ML Tests: Opt-in via commit or PR title containing `[heavy]`.
+- Security Audit: `pip-audit` vulnerability scan of resolved dependency set.
+- Docker Build Matrix: Builds each service image (cache optimized, no push).
+- Service Graph Validation: Ensures `SERVICE_GRAPH.mmd` edges match required architecture.
+- SBOM Generation: CycloneDX SBOM (`sbom-python.xml`) artifact for dependency transparency.
+- Coverage Reporting: Pytest coverage XML uploaded (Codecov optional if token configured).
+- Heavy Model Cache: Caches HuggingFace / Whisper / Torch hubs for opt-in heavy tests.
+- Release Image Publishing: On GitHub Release publishes service images to GHCR (`ghcr.io/<repo>/<service>:<tag>`).
+- Lint & Types: Ruff + mypy pre-check gate.
+- Dockerfile Lint: hadolint (blocking) on all Dockerfiles.
+- Multi-Arch Release: Publish linux/amd64 & linux/arm64 images.
+- GPU Variants: CUDA-tagged images (-cuda) built for heavy ML services on release.
+- Image Signing & Attestation: Optional Cosign signing + CycloneDX SBOM attestation when key provided.
+- SBOM Diff: SBOM changes against main uploaded as artifact.
+- Image Size Reporting: Per-service size artifact for regression tracking.
+
+### Image Optimization
+
+Heavy ML services (`11-stt-tts-gateway`, `16-fastvlm-sidecar`) use a multi-stage layout splitting core vs. heavy model wheels for better layer reuse. Optional model prefetch layer warms model weights at build (ARG `PREFETCH_MODELS=true`) to reduce first-request latency. Multi-arch builds supported via:
+
+`python scripts/build_all.py --multi-arch --tag <tag> [--push]`
+
+CUDA variants are produced with tag suffix `-cuda` (linux/amd64) using `--build-arg BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04`.
+
+Model prefetch examples:
+
+```bash
+# Prefetch STT + TTS models at build
+docker build -t owui/stt-tts:prefetch --build-arg PREFETCH_MODELS=true 11-stt-tts-gateway
+
+# Prefetch FastVLM model weights
+docker build -t owui/fastvlm:prefetch --build-arg PREFETCH_MODELS=true 16-fastvlm-sidecar
+```
+
+Extending CI:
+
+- Add coverage upload (e.g., Codecov) by appending a step after tests.
+- Add SBOM generation with `pip install cyclonedx-bom && cyclonedx-py`.
+- Push images on tagged releases by adding `push: true` and auth to the docker job.
+- Add multi-arch builds (linux/amd64, linux/arm64) using buildx `platforms:` in release job.
+- Add policy to require signed images before deployment (verify with `cosign verify`).

@@ -1,0 +1,362 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, '**' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install tooling
+        run: |
+          pip install ruff mypy -c constraints.txt || pip install ruff mypy
+      - name: Ruff
+        run: ruff check .
+      - name: Mypy (all services)
+        run: |
+          set -e
+          TARGETS=$(ls -d [0-9][0-9]-*/src 2>/dev/null || true)
+          if [ -z "$TARGETS" ]; then echo "No service src directories"; exit 0; fi
+          mypy $TARGETS
+
+  dependency-drift:
+    name: Dependency Drift Check
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+            python-version: '3.11'
+            cache: 'pip'
+      - name: Install service dependencies (constrained) & drift check
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          for f in $(git ls-files '*requirements.txt' | grep -E '^[0-9]{2}-'); do \
+            echo "Installing $f"; \
+            pip install -r "$f" -c constraints.txt; \
+          done
+          python scripts/check_dependency_drift.py
+
+  tests:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    needs: dependency-drift
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install core & service dependencies
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          # Core install (gateway + common libs) first for caching
+          pip install -r 00-pipelines-gateway/requirements.txt -c constraints.txt
+          # Install remaining (skip duplicates to save time):
+          for f in $(git ls-files '*requirements.txt' | grep -E '^[0-9]{2}-' | grep -v '^00-'); do \
+            pip install -r "$f" -c constraints.txt; \
+          done
+          # Ensure pytest present (redundant but explicit)
+          pip install pytest pytest-asyncio -c constraints.txt || true
+      - name: Run tests (fast subset)
+        run: |
+          # Run tests only where present; skip heavy ML timeouts by default
+          TEST_DIRS=$(ls -d [0-9][0-9]-*/tests 2>/dev/null || true)
+          if [ -z "$TEST_DIRS" ]; then
+            echo "No tests discovered"; exit 0; fi
+          # Exclude heavy model initialization (fastvlm, stt-tts) unless specifically changed
+          EXCLUDE='(fastvlm|stt-tts)'
+          SELECTED=$(echo "$TEST_DIRS" | grep -Ev "$EXCLUDE" || true)
+          if [ -z "$SELECTED" ]; then SELECTED="$TEST_DIRS"; fi
+          echo "Running pytest on: $SELECTED"
+          pytest -q --cov --cov-report=xml:$GITHUB_WORKSPACE/coverage.xml $SELECTED
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+      - name: Upload coverage to Codecov (if token provided)
+        uses: codecov/codecov-action@v4
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+      - name: Upload pytest artifacts (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-logs
+          path: .
+
+  heavy-tests:
+    name: Heavy ML Tests
+    runs-on: ubuntu-latest
+    needs: tests
+    if: >-
+      contains(github.event.head_commit.message, '[heavy]') ||
+      contains(github.event.pull_request.title, '[heavy]')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install heavy service dependencies
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          pip install -r 11-stt-tts-gateway/requirements.txt -c constraints.txt
+          pip install -r 16-fastvlm-sidecar/requirements.txt -c constraints.txt
+          pip install pytest -c constraints.txt || true
+      - name: Cache model weights
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/whisper
+            ~/.cache/torch/hub
+          key: model-cache-${{ runner.os }}-${{ hashFiles('11-stt-tts-gateway/requirements.txt', '16-fastvlm-sidecar/requirements.txt') }}
+          restore-keys: |
+            model-cache-${{ runner.os }}-
+      - name: Run heavy tests (if present)
+        run: |
+          for d in 11-stt-tts-gateway 16-fastvlm-sidecar; do
+            if [ -d "$d/tests" ]; then pytest -q "$d/tests" || exit 1; fi
+          done
+
+  security-audit:
+    name: Security Audit (pip-audit)
+    runs-on: ubuntu-latest
+    needs: dependency-drift
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install aggregate dependencies
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          for f in $(git ls-files '*requirements.txt' | grep -E '^[0-9]{2}-'); do \
+            pip install -r "$f" -c constraints.txt; \
+          done
+          pip install pip-audit
+      - name: Run pip-audit
+        run: pip-audit --progress-spinner=off
+
+  docker-build:
+    name: Docker Build Matrix
+    runs-on: ubuntu-latest
+    needs: tests
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - 00-pipelines-gateway
+          - 01-intent-router
+          - 02-memory-2.0
+          - 03-feeling-engine
+          - 04-hidden-multi-expert-merger
+          - 05-drive-state
+          - 06-byof-tool-hub
+          - 07-tandoor-sidecar
+          - 08-openbb-sidecar
+          - 09-proactive-daemon
+          - 10-multimodal-router
+          - 11-stt-tts-gateway
+          - 13-policy-guardrails
+          - 14-telemetry-cache
+          - 15-bytebot-gateway
+          - 16-fastvlm-sidecar
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service }}
+          push: false
+          tags: owui/${{ matrix.service }}:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+      - name: Report image size
+        run: |
+          docker images --format '{{"{{.Repository}}:{{.Tag}} {{.Size}}"}}' | grep "owui/${{ matrix.service }}:ci" > size.txt || true
+          cat size.txt || true
+      - name: Upload image size
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-sizes
+          path: size.txt
+          if-no-files-found: ignore
+
+  service-graph-validate:
+    name: Service Graph Validate
+    runs-on: ubuntu-latest
+    needs: dependency-drift
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Validate graph
+        run: |
+          python scripts/validate_service_graph.py
+
+  sbom:
+    name: SBOM Generation
+    runs-on: ubuntu-latest
+    needs: dependency-drift
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install aggregate dependencies
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          for f in $(git ls-files '*requirements.txt' | grep -E '^[0-9]{2}-'); do \
+            pip install -r "$f" -c constraints.txt; \
+          done
+          pip install cyclonedx-bom
+      - name: Generate CycloneDX SBOM
+        run: cyclonedx-py environment --format xml --output sbom-python.xml
+      - name: Fetch baseline (main) SBOM if exists
+        run: |
+          git fetch origin main --depth=1 || true
+          if git show origin/main:sbom-python.xml > baseline-sbom.xml 2>/dev/null; then
+            echo "Baseline SBOM retrieved"; else echo "No baseline SBOM present on main"; fi
+      - name: SBOM diff
+        run: |
+          if [ -f baseline-sbom.xml ]; then diff -u baseline-sbom.xml sbom-python.xml || true; else echo "No baseline to diff"; fi | tee sbom-diff.txt
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-python
+          path: sbom-python.xml
+      - name: Upload SBOM diff
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-diff
+          path: sbom-diff.txt
+
+  release-images:
+    name: Release Images Push
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    needs: [docker-build, tests, sbom]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Download SBOM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-python
+          path: .
+      - name: Load Cosign Key (if provided)
+        env:
+          KEY_B64: ${{ secrets.COSIGN_KEY_BASE64 }}
+        run: |
+          if [ -n "$KEY_B64" ]; then echo "$KEY_B64" | base64 -d > cosign.key && echo "COSIGN_KEY=cosign.key" >> $GITHUB_ENV; else echo "No cosign key provided"; fi
+      - name: Build & Push Multi-Arch Images (CPU + CUDA variants)
+        run: |
+          set -e
+          TAG=${GITHUB_REF_NAME}
+          PLATFORMS=linux/amd64,linux/arm64
+          CUDA_BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+          HEAVY_GPU_SERVICES="11-stt-tts-gateway 16-fastvlm-sidecar"
+          for svc in $(ls -d [0-9][0-9]-* | grep -v '12-avatar-overlay'); do \
+            repo_part=$(echo $svc | sed 's/^..-//'); \
+            img=ghcr.io/${{ github.repository }}/$repo_part:${TAG}; \
+            echo "Building CPU multi-arch $svc -> $img ($PLATFORMS)"; \
+            docker buildx build --platform $PLATFORMS -t "$img" "$svc" --push; \
+            if echo "$HEAVY_GPU_SERVICES" | grep -qw "$svc"; then \
+              cuda_img=ghcr.io/${{ github.repository }}/$repo_part:${TAG}-cuda; \
+              echo "Building CUDA variant $svc -> $cuda_img (linux/amd64)"; \
+              docker buildx build --build-arg BASE_IMAGE=$CUDA_BASE_IMAGE --platform linux/amd64 -t "$cuda_img" "$svc" --push; \
+            fi; \
+          done
+      - name: (Optional) Cosign Sign Images & Attest SBOM
+        env:
+          COSIGN_EXPERIMENTAL: '1'
+        run: |
+          if [ -f cosign.key ]; then \
+            set -e; \
+            TAG=${GITHUB_REF_NAME}; \
+            for svc in $(ls -d [0-9][0-9]-* | grep -v '12-avatar-overlay'); do \
+              repo_part=$(echo $svc | sed 's/^..-//'); \
+              for suffix in "" "-cuda"; do \
+                img=ghcr.io/${{ github.repository }}/$repo_part:${TAG}$suffix; \
+                if docker buildx imagetools inspect $img > /dev/null 2>&1; then \
+                  cosign sign --yes --key cosign.key $img || echo "Sign failed $img"; \
+                  if [ -f sbom-python.xml ]; then cosign attest --yes --predicate sbom-python.xml --type cyclonedx --key cosign.key $img || echo "Attest failed $img"; fi; \
+                fi; \
+              done; \
+            done; \
+          else \
+            echo "Skipping signing; no key"; \
+          fi
+
+  hadolint:
+    name: Dockerfile Lint
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install hadolint
+        run: |
+          curl -sSL -o /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+          chmod +x /usr/local/bin/hadolint
+      - name: Lint Dockerfiles (blocking)
+        run: |
+          set -e
+          find . -maxdepth 4 -name 'Dockerfile' -print -exec hadolint {} \;

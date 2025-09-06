@@ -2,12 +2,12 @@
 
 ## Overview
 
-The STT-TTS Gateway provides local speech-to-text and text-to-speech capabilities for the OpenWebUI Suite. It integrates faster-whisper for high-performance speech recognition and KittenTTS for natural voice synthesis, with optional timestamp generation for viseme synchronization.
+The STT-TTS Gateway provides local speech-to-text and text-to-speech capabilities for the OpenWebUI Suite. It integrates faster-whisper for high-performance speech recognition and Coqui TTS models for natural voice synthesis, with optional timestamp generation.
 
 ## Architecture
 
 - **STT Engine**: faster-whisper (local, fast, accurate)
-- **TTS Engine**: KittenTTS (local, high-quality synthesis)
+- **TTS Engine**: Coqui TTS (local, high-quality synthesis)
 - **API**: FastAPI with async endpoints
 - **Audio Processing**: WAV/MP3 support with automatic format detection
 - **Deployment**: Single container or dual-container setup
@@ -55,7 +55,7 @@ Text-to-speech synthesis endpoint.
 ```json
 {
   "text": "Text to synthesize",
-  "voice": "default|female|male",
+  "voice": "default",
   "speed": 1.0,
   "timestamps": true
 }
@@ -94,17 +94,15 @@ Retrieve generated audio files.
 ### Environment Variables
 
 ```bash
-# Service Configuration
-STT_MODEL_SIZE=tiny|base|small|medium|large
-TTS_VOICE_MODEL=kitten_tts_model
+# Core Configuration
+STT_MODEL_SIZE=tiny|base|small|medium|large        # Whisper size passed to faster-whisper
+TTS_MODEL_NAME=tts_models/en/ljspeech/tacotron2-DDC_ph  # Coqui TTS model id
 AUDIO_STORAGE_PATH=/app/audio
 MAX_AUDIO_SIZE_MB=50
 CORS_ORIGINS=http://localhost:3000,http://localhost:8080
 
-# Performance Tuning
-STT_THREADS=4
-TTS_THREADS=2
-CACHE_AUDIO_FILES=true
+# Optional build-time prefetch (Docker ARG PREFETCH_MODELS=true)
+PREFETCH_MODELS=true
 ```
 
 ### Docker Configuration
@@ -134,14 +132,15 @@ services:
 
 ## Dependencies
 
-- faster-whisper>=0.10.0
-- torch>=2.0.0
-- torchaudio>=2.0.0
-- numpy>=1.21.0
-- pydantic>=2.0.0
-- uvicorn>=0.20.0
-- python-multipart>=0.0.6
-- aiofiles>=0.20.0
+Core (resolve via root constraints):
+
+- faster-whisper
+- torch / torchaudio
+- TTS
+- pydantic
+- uvicorn
+- python-multipart
+- aiofiles
 
 ## Performance Requirements
 
@@ -152,15 +151,20 @@ services:
 
 ## Development
 
-### Local Setup
+### Local Setup (CPU)
 
 ```bash
 # Install dependencies
 pip install -r requirements.txt
 
 # Download models
-python -c "import faster_whisper; faster_whisper.WhisperModel('base')"
-python -c "import kitten_tts; kitten_tts.download_models()"
+python - <<'PY'
+from faster_whisper import WhisperModel
+from TTS.api import TTS
+WhisperModel('base', device='cpu', compute_type='int8')
+TTS('tts_models/en/ljspeech/tacotron2-DDC_ph')
+print('Prefetched models')
+PY
 
 # Run service
 python src/app.py
@@ -197,12 +201,11 @@ curl -X POST http://localhost:8089/tts \
 - Processing timeout → 504 Gateway Timeout
 - Storage full → 507 Insufficient Storage
 
-## Monitoring
+## Monitoring & Health
 
-- Health check endpoint: GET /health
-- Metrics endpoint: GET /metrics
-- Processing statistics logging
-- Audio file cleanup automation
+- Health endpoints: `/health` (detailed), `/healthz` (lightweight)
+- Logs include processing timings
+- Background cleanup thread removes expired audio
 
 ## Security Considerations
 
@@ -214,8 +217,8 @@ curl -X POST http://localhost:8089/tts \
 
 ## Future Enhancements
 
-- Streaming STT for real-time transcription
-- Voice cloning capabilities
-- Multi-language TTS support
-- Viseme animation data generation
-- Audio enhancement preprocessing
+- Streaming STT (chunked websockets)
+- Advanced timestamp alignment
+- Voice cloning / speaker embedding
+- Multi-language dynamic model switching
+- GPU acceleration (CUDA image variant `-cuda`)
