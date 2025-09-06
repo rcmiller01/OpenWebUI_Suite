@@ -1,12 +1,13 @@
-fastapi>=0.104.1
-uvicorn[standard]>=0.24.0
-pydantic>=2.5.0
-httpx>=0.25.0
-python-multipart>=0.0.6
+# Aligned via top-level constraints.txt (install with: pip install -r requirements.txt -c ../constraints.txt)
+fastapi
+uvicorn[standard]
+pydantic
+httpx
+python-multipart
 python-dotenv>=1.0.0
-opentelemetry-api>=1.25.0
-opentelemetry-sdk>=1.25.0
-opentelemetry-instrumentation-fastapi>=0.46b0
-opentelemetry-exporter-otlp>=1.25.0
-redis>=5.0.0
-pytest>=8.2.0
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-instrumentation-fastapi
+opentelemetry-exporter-otlp
+redis
+pytest

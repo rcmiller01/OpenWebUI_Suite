@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1.6
+FROM python:3.11-slim AS base
+
+ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=off PIP_DISABLE_PIP_VERSION_CHECK=on \
+    PYTHONDONTWRITEBYTECODE=1
+
+# System deps (audio/image basics; build tools then remove)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl git wget ca-certificates ffmpeg libsndfile1 libgl1 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user
+RUN useradd -m -u 1000 owui
+WORKDIR /app
+USER owui
+
+# Pre-create wheel cache dir (bind as volume optionally)
+ENV PIP_CACHE_DIR=/app/.pip-cache
+RUN mkdir -p $PIP_CACHE_DIR
+
+# Copy global constraints for layer caching
+COPY constraints.txt /app/constraints.txt
+
+# Default entrypoint just prints help (services override)
+ENTRYPOINT ["python","-c","print('Base image ready')"]
