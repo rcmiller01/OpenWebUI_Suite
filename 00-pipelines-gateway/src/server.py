@@ -5,11 +5,27 @@ from typing import Dict, Any, List
 import json
 import os
 import time
+import signal
+import sys
 
 from src.util.http import Svc
 from src.router.providers import get_model_router
 
+# Make host/port configurable
+HOST = os.getenv("HOST", "0.0.0.0")
+PORT = int(os.getenv("PORT", 8080))
+
 app = FastAPI(title="Pipelines Gateway", version="0.2.0")
+
+# Graceful shutdown handler
+def signal_handler(sig, frame):
+    print("Received shutdown signal, closing gracefully...")
+    # Add any cleanup code here if needed
+    sys.exit(0)
+
+# Register signal handlers for graceful shutdown
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
 
 
 @app.on_event("startup")
