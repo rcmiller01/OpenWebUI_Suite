@@ -12,7 +12,44 @@ import uuid
 from src.util.http import Svc, REQUEST_ID  # type: ignore
 from src.router.providers import get_model_router  # type: ignore
 
-app = FastAPI(title="Pipelines Gateway", version="0.3.0")
+ENABLE_OTEL = os.getenv("ENABLE_OTEL", "false").lower() == "true"
+OTEL_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "pipelines-gateway")
+
+if ENABLE_OTEL:
+    try:
+        from opentelemetry import trace  # type: ignore
+        from opentelemetry.sdk.resources import Resource  # type: ignore
+        from opentelemetry.sdk.trace import TracerProvider  # type: ignore
+        from opentelemetry.sdk.trace.export import (  # type: ignore
+            BatchSpanProcessor,
+        )
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,  # type: ignore
+        )
+        from opentelemetry.instrumentation.fastapi import (  # type: ignore
+            FastAPIInstrumentor,
+        )
+
+        resource = Resource.create({"service.name": OTEL_SERVICE_NAME})
+        provider = TracerProvider(resource=resource)
+        if OTEL_ENDPOINT:
+            exporter = OTLPSpanExporter(endpoint=f"{OTEL_ENDPOINT}/v1/traces")
+            provider.add_span_processor(BatchSpanProcessor(exporter))
+        trace.set_tracer_provider(provider)
+    except Exception:  # pragma: no cover - instrumentation optional
+        ENABLE_OTEL = False
+
+app = FastAPI(title="Pipelines Gateway", version="0.4.0")
+
+if ENABLE_OTEL:
+    try:
+        FastAPIInstrumentor.instrument_app(app)
+    except Exception:  # pragma: no cover
+        pass
+
+# Shared HTTP client (future: reuse) placeholder for potential pooling
+_shared_client = None  # reserved for future optimization
 
 
 # Middleware: correlation / request id
@@ -430,5 +467,6 @@ async def health():
     return {
         "status": "healthy",
         "service": "pipelines-gateway",
-        "version": "0.3.0"
+        "version": "0.4.0",
+        "otel": ENABLE_OTEL,
     }
