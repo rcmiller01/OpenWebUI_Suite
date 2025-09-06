@@ -193,6 +193,12 @@ async def health():
             "tools_registered": len(tool_registry.get_tool_definitions())}
 
 
+@app.get("/healthz")
+async def healthz():
+    """Kubernetes style healthz alias"""
+    return {"ok": True, "service": "byof-tool-hub"}
+
+
 @app.get("/tools")
 async def list_tools():
     """List all available tools in OpenAI format"""

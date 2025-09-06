@@ -32,6 +32,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+@app.get("/healthz")
+async def healthz():
+    return {"ok": True, "service": "feeling-engine"}
+
 # Models
 class AnalyzeRequest(BaseModel):
     text: str = Field(..., description="Text to analyze", max_length=10000)

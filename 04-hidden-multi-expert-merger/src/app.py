@@ -12,6 +12,14 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 import uvicorn
 
+
+app = FastAPI(title="Hidden Multi-Expert Merger", version="1.0.0")
+
+
+@app.get("/healthz")
+async def healthz():
+    return {"ok": True, "service": "hidden-multi-expert-merger"}
+
 from merge_templates import get_merge_template
 
 

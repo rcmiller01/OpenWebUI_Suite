@@ -52,6 +52,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+@app.get("/healthz")
+async def healthz():
+    """Kubernetes style healthz alias"""
+    return {"ok": True, "service": "telemetry-cache"}
+
 # Pydantic models
 class LogEvent(BaseModel):
     event: str

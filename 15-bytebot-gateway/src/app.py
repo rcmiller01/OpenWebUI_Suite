@@ -145,6 +145,12 @@ app = FastAPI(
 )
 
 
+@app.get("/healthz")
+async def healthz():
+    """Kubernetes style healthz alias"""
+    return {"ok": True, "service": "bytebot-gateway"}
+
+
 @app.get("/capabilities", response_model=CapabilitiesResponse)
 async def get_capabilities():
     """Get available capabilities and limits"""
