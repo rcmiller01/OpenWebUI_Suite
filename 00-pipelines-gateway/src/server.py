@@ -23,6 +23,9 @@ ENABLE_OTEL = os.getenv("ENABLE_OTEL", "false").lower() == "true"
 OTEL_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "pipelines-gateway")
 RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "0") or 0)
+RATE_LIMIT_BURST = int(
+    os.getenv("RATE_LIMIT_BURST", str(max(1, RATE_LIMIT_PER_MIN)))
+)
 PIPELINE_TIMEOUT = int(os.getenv("PIPELINE_TIMEOUT_SECONDS", "0") or 0)
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 TASK_WORKER_ENABLED = os.getenv(
@@ -79,19 +82,49 @@ _metrics: dict[str, int] = {
 
 
 # --- Rate Limiting Middleware (simple global or per-user bucket) ---
+_TOKEN_BUCKET_SCRIPT = """
+local key = KEYS[1]
+local now_ms = tonumber(ARGV[1])
+local rate = tonumber(ARGV[2]) -- tokens per minute
+local burst = tonumber(ARGV[3])
+local ttl = 120
+local bucket = redis.call('HMGET', key, 'tokens', 'ts')
+local tokens = tonumber(bucket[1]) or burst
+local ts = tonumber(bucket[2]) or now_ms
+local elapsed = math.max(0, now_ms - ts)
+local refill = (rate/60000.0) * elapsed
+tokens = math.min(burst, tokens + refill)
+if tokens < 1 then
+    redis.call('HMSET', key, 'tokens', tokens, 'ts', now_ms)
+    redis.call('PEXPIRE', key, ttl*1000)
+    return 0
+else
+    tokens = tokens - 1
+    redis.call('HMSET', key, 'tokens', tokens, 'ts', now_ms)
+    redis.call('PEXPIRE', key, ttl*1000)
+    return tokens
+end
+"""
+
+ 
 async def _rate_limiter(request: Request) -> bool:
     if RATE_LIMIT_PER_MIN <= 0:
         return True
-    # Use redis INCR with expiry; fallback allow if redis absent
     try:
         import redis.asyncio as redis  # type: ignore
         r = redis.from_url(REDIS_URL, decode_responses=True)
         user_id = request.headers.get("X-User-Id") or "global"
-        key = f"rl:{user_id}:{int(time.time()//60)}"
-        count = await r.incr(key)
-        if count == 1:
-            await r.expire(key, 120)
-        return count <= RATE_LIMIT_PER_MIN
+        key = f"tb:{user_id}"
+        now_ms = int(time.time() * 1000)
+        remain = await r.eval(
+            _TOKEN_BUCKET_SCRIPT,
+            1,
+            key,
+            now_ms,
+            RATE_LIMIT_PER_MIN,
+            RATE_LIMIT_BURST,
+        )
+        return remain != 0
     except Exception:
         return True
 
@@ -587,9 +620,33 @@ async def health():
         "version": "0.4.0",
         "otel": ENABLE_OTEL,
         "rate_limit": RATE_LIMIT_PER_MIN,
+        "rate_burst": RATE_LIMIT_BURST,
         "timeout": PIPELINE_TIMEOUT,
         "task_worker": TASK_WORKER_ENABLED,
+        "metrics": _metrics,
     }
+
+
+@app.get("/v1/models")
+async def list_models():
+    # Minimal static list; real impl could aggregate additional info
+    model_id = os.getenv("DEFAULT_LOCAL_MODEL", "local-model")
+    return {
+        "object": "list",
+        "data": [{"id": model_id, "object": "model"}],
+    }
+
+
+@app.get("/v1/tools")
+async def list_tools():
+    try:
+        tools_schema = await app.state.services["tools"].get(  # type: ignore
+            "/tools"
+        )
+        data = tools_schema.get("tools", [])
+    except Exception:
+        data = []
+    return {"object": "list", "data": data}
 
 
 @app.get("/metrics")
