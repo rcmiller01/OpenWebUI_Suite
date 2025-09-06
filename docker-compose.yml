@@ -1,0 +1,163 @@
+version: '3.9'
+
+# Unified OpenWebUI Suite composition with profiles.
+# Use: docker compose --profile core up -d
+# Common profiles: core, memory, affect, policy, tools, finance, speech, vision, telemetry, extras, all
+
+x-common-env: &common-env
+  PYTHONUNBUFFERED: '1'
+  LOG_LEVEL: info
+  PIP_INDEX_URL: https://pypi.org/simple
+
+x-common-depends: &depends-redis
+  depends_on:
+    - redis
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    profiles: [core]
+
+  gateway:
+    build:
+      context: ./00-pipelines-gateway
+    image: owui/gateway:dev
+    environment:
+      <<: *common-env
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - gateway_files:/app/files
+    ports:
+      - "8100:8100"
+    profiles: [core]
+    <<: *depends-redis
+
+  intent-router:
+    build:
+      context: ./01-intent-router
+    image: owui/intent-router:dev
+    environment:
+      <<: *common-env
+    profiles: [core]
+
+  memory:
+    build:
+      context: ./02-memory-2.0
+    image: owui/memory:dev
+    environment:
+      <<: *common-env
+    volumes:
+      - memory_data:/app
+    profiles: [memory]
+
+  feeling-engine:
+    build:
+      context: ./03-feeling-engine
+    image: owui/feeling-engine:dev
+    environment:
+      <<: *common-env
+    profiles: [affect]
+
+  merger:
+    build:
+      context: ./04-hidden-multi-expert-merger
+    image: owui/merger:dev
+    environment:
+      <<: *common-env
+    profiles: [core]
+
+  drive-state:
+    build:
+      context: ./05-drive-state
+    image: owui/drive-state:dev
+    environment:
+      <<: *common-env
+    profiles: [extras]
+
+  tool-hub:
+    build:
+      context: ./06-byof-tool-hub
+    image: owui/tool-hub:dev
+    environment:
+      <<: *common-env
+    profiles: [tools]
+
+  tandoor:
+    build:
+      context: ./07-tandoor-sidecar
+    image: owui/tandoor-sidecar:dev
+    environment:
+      <<: *common-env
+    profiles: [extras]
+
+  openbb:
+    build:
+      context: ./08-openbb-sidecar
+    image: owui/openbb-sidecar:dev
+    environment:
+      <<: *common-env
+    profiles: [finance]
+
+  proactive-daemon:
+    build:
+      context: ./09-proactive-daemon
+    image: owui/proactive-daemon:dev
+    environment:
+      <<: *common-env
+    profiles: [extras]
+
+  multimodal-router:
+    build:
+      context: ./10-multimodal-router
+    image: owui/multimodal-router:dev
+    environment:
+      <<: *common-env
+    profiles: [vision]
+
+  stt-tts:
+    build:
+      context: ./11-stt-tts-gateway
+    image: owui/stt-tts:dev
+    environment:
+      <<: *common-env
+    profiles: [speech]
+    volumes:
+      - tts_audio:/app/audio
+
+  policy:
+    build:
+      context: ./13-policy-guardrails
+    image: owui/policy-guardrails:dev
+    environment:
+      <<: *common-env
+    profiles: [policy]
+
+  telemetry:
+    build:
+      context: ./14-telemetry-cache
+    image: owui/telemetry-cache:dev
+    environment:
+      <<: *common-env
+    profiles: [telemetry]
+
+  bytebot:
+    build:
+      context: ./15-bytebot-gateway
+    image: owui/bytebot-gateway:dev
+    environment:
+      <<: *common-env
+    profiles: [extras]
+
+  fastvlm:
+    build:
+      context: ./16-fastvlm-sidecar
+    image: owui/fastvlm:dev
+    environment:
+      <<: *common-env
+    profiles: [vision]
+
+volumes:
+  gateway_files:
+  memory_data:
+  tts_audio:
