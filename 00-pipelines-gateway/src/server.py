@@ -8,6 +8,7 @@ import os
 import time
 import asyncio
 import uuid
+import contextlib
 
 from src.util.http import (  # type: ignore
     Svc,
@@ -15,11 +16,20 @@ from src.util.http import (  # type: ignore
     init_http_client,
     close_http_client,
 )
+from src.tasks import TaskQueue, worker_loop  # type: ignore
 from src.router.providers import get_model_router  # type: ignore
 
 ENABLE_OTEL = os.getenv("ENABLE_OTEL", "false").lower() == "true"
 OTEL_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "pipelines-gateway")
+RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "0") or 0)
+PIPELINE_TIMEOUT = int(os.getenv("PIPELINE_TIMEOUT_SECONDS", "0") or 0)
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+TASK_WORKER_ENABLED = os.getenv(
+    "TASK_WORKER_ENABLED", "false"
+).lower() == "true"
+TASK_QUEUE_NAME = os.getenv("TASK_QUEUE_NAME", "pipeline_tasks")
+TASK_DQL_NAME = os.getenv("TASK_DQL_NAME", "pipeline_tasks_dlq")
 
 if ENABLE_OTEL:
     try:
@@ -55,6 +65,43 @@ if ENABLE_OTEL:
 
 # Shared HTTP client (future: reuse) placeholder for potential pooling
 _shared_client = None  # reserved for future optimization
+_task_queue: TaskQueue | None = None
+_worker_task: asyncio.Task | None = None
+
+
+# --- Rate Limiting Middleware (simple global or per-user bucket) ---
+async def _rate_limiter(request: Request) -> bool:
+    if RATE_LIMIT_PER_MIN <= 0:
+        return True
+    # Use redis INCR with expiry; fallback allow if redis absent
+    try:
+        import redis.asyncio as redis  # type: ignore
+        r = redis.from_url(REDIS_URL, decode_responses=True)
+        user_id = request.headers.get("X-User-Id") or "global"
+        key = f"rl:{user_id}:{int(time.time()//60)}"
+        count = await r.incr(key)
+        if count == 1:
+            await r.expire(key, 120)
+        return count <= RATE_LIMIT_PER_MIN
+    except Exception:
+        return True
+
+
+@app.middleware("http")
+async def rate_limit_and_timeout(request: Request, call_next):
+    # rate limit
+    allowed = await _rate_limiter(request)
+    if not allowed:
+        return Response(status_code=429, content="Rate limit exceeded")
+    # timeout wrapper
+    if PIPELINE_TIMEOUT and request.url.path.startswith("/v1/chat/"):
+        try:
+            return await asyncio.wait_for(
+                call_next(request), timeout=PIPELINE_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            return Response(status_code=504, content="Gateway timeout")
+    return await call_next(request)
 
 
 # Middleware: correlation / request id
@@ -75,11 +122,33 @@ async def _load_services():
     await init_http_client()
     with open(os.getenv("SERVICES_PATH", "config/services.json"), "r") as f:
         app.state.services = {k: Svc(v) for k, v in json.load(f).items()}
+    # Task queue setup
+    global _task_queue, _worker_task
+    _task_queue = TaskQueue(REDIS_URL)
+    if TASK_WORKER_ENABLED:
+        async def _handler(payload, depth):
+            # Minimal async processing: run full pipeline and discard result
+            try:
+                ctx = {
+                    "messages": payload["messages"],
+                    "user_id": payload.get("user", "anon"),
+                }
+                ctx = await _pre(ctx)
+                ctx = await _mid(ctx)
+                await _post(ctx)
+            except Exception:
+                pass
+        _worker_task = asyncio.create_task(worker_loop(_task_queue, _handler))
 
 
 @app.on_event("shutdown")
 async def _shutdown():
     await close_http_client()
+    global _worker_task
+    if _worker_task:
+        _worker_task.cancel()
+        with contextlib.suppress(Exception):  # type: ignore
+            await _worker_task
 
 
 def _sys_prompt_base() -> str:
@@ -473,6 +542,27 @@ async def chat_completions_stream(req: Request):
     return StreamingResponse(_gen(), media_type="application/json")
 
 
+@app.post("/tasks/enqueue")
+async def enqueue_task(req: Request):
+    body = await req.json()
+    if not _task_queue:
+        return {"error": "task queue disabled"}
+    await _task_queue.connect()
+    await _task_queue.enqueue({"messages": body.get("messages", [])}, depth=0)
+    return {"enqueued": True}
+
+
+@app.get("/tasks/dlq")
+async def list_dlq(limit: int = 25):
+    if not _task_queue:
+        return {"error": "task queue disabled"}
+    import redis.asyncio as redis  # type: ignore
+    r = redis.from_url(REDIS_URL, decode_responses=True)
+    # LRANGE returns newest to oldest depending on push order; adjust if needed
+    items = await r.lrange(TASK_DQL_NAME, 0, limit - 1)
+    return {"dlq": [json.loads(i) for i in items]}
+
+
 @app.get("/health")
 async def health():
     return {
@@ -480,4 +570,7 @@ async def health():
         "service": "pipelines-gateway",
         "version": "0.4.0",
         "otel": ENABLE_OTEL,
+        "rate_limit": RATE_LIMIT_PER_MIN,
+        "timeout": PIPELINE_TIMEOUT,
+        "task_worker": TASK_WORKER_ENABLED,
     }
