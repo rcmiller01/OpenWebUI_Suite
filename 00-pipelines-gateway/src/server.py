@@ -9,7 +9,12 @@ import time
 import asyncio
 import uuid
 
-from src.util.http import Svc, REQUEST_ID  # type: ignore
+from src.util.http import (  # type: ignore
+    Svc,
+    REQUEST_ID,
+    init_http_client,
+    close_http_client,
+)
 from src.router.providers import get_model_router  # type: ignore
 
 ENABLE_OTEL = os.getenv("ENABLE_OTEL", "false").lower() == "true"
@@ -67,8 +72,14 @@ async def add_request_id(request: Request, call_next):
 
 @app.on_event("startup")
 async def _load_services():
+    await init_http_client()
     with open(os.getenv("SERVICES_PATH", "config/services.json"), "r") as f:
         app.state.services = {k: Svc(v) for k, v in json.load(f).items()}
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    await close_http_client()
 
 
 def _sys_prompt_base() -> str:

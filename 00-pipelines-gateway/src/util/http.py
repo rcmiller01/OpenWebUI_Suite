@@ -14,6 +14,22 @@ REQUEST_ID: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
 )
 
 
+_CLIENT: httpx.AsyncClient | None = None
+
+
+async def init_http_client():  # called on app startup
+    global _CLIENT
+    if _CLIENT is None:
+        _CLIENT = httpx.AsyncClient(timeout=30)
+
+
+async def close_http_client():  # called on app shutdown
+    global _CLIENT
+    if _CLIENT is not None:
+        await _CLIENT.aclose()
+        _CLIENT = None
+
+
 class Svc:
     def __init__(self, base: str):
         self.base = base.rstrip("/")
@@ -24,12 +40,12 @@ class Svc:
         rid = REQUEST_ID.get()
         if rid:
             headers["X-Request-Id"] = rid
-        async with httpx.AsyncClient(timeout=30) as c:
-            r = await c.get(
-                f"{self.base}{path}", params=params, headers=headers
-            )
-            r.raise_for_status()
-            return r.json()
+        client = _CLIENT or httpx.AsyncClient(timeout=30)
+        r = await client.get(
+            f"{self.base}{path}", params=params, headers=headers
+        )
+        r.raise_for_status()
+        return r.json()
 
     async def post(self, path: str, payload: Dict[str, Any]):
         headers = {}
@@ -42,9 +58,9 @@ class Svc:
                 self.secret.encode(), raw, hashlib.sha256
             ).hexdigest()
             headers["X-SUITE-SIG"] = mac
-        async with httpx.AsyncClient(timeout=60) as c:
-            r = await c.post(
-                f"{self.base}{path}", json=payload, headers=headers
-            )
-            r.raise_for_status()
-            return r.json()
+        client = _CLIENT or httpx.AsyncClient(timeout=60)
+        r = await client.post(
+            f"{self.base}{path}", json=payload, headers=headers
+        )
+        r.raise_for_status()
+        return r.json()
