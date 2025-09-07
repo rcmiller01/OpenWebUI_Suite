@@ -7,6 +7,28 @@ set -e  # Exit on any error
 echo "🚀 OpenWebUI Suite Deployment with External Dependencies"
 echo "======================================================="
 
+# Check environment variables first
+echo ""
+log "Checking environment variables..."
+
+# Run environment checker
+if [ -f "scripts/env_check.py" ]; then
+    python3 scripts/env_check.py
+    ENV_CHECK_STATUS=$?
+    
+    if [ $ENV_CHECK_STATUS -ne 0 ]; then
+        error "Environment variable check failed!"
+        echo "Some required variables are missing. Please configure them before deploying."
+        exit 1
+    fi
+    
+    success "Environment variables configured!"
+else
+    warning "Environment checker not found, skipping validation..."
+fi
+
+echo ""
+
 # Configuration
 DEPLOY_BRANCH="deploy/full-activation"
 EXTERNAL_DEPS_DIR="external"
