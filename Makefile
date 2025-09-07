@@ -68,6 +68,12 @@ test: ## Run fast API smoke tests (gateway + intent)
 	$(PY) -m pytest 00-pipelines-gateway -k health || true
 	$(PY) -m pytest 01-intent-router -k health || true
 
+validate: ## Quick deployment validation (core services + routing)
+	$(PY) scripts/quick_validate.py
+
+sanity: ## Full suite sanity check (all services + integrations)
+	$(PY) scripts/owui_sanity.py
+
 dev\:core: ## Launch only core profile (gateway, intent, merger, redis)
 	$(COMPOSE) --profile core up -d
 
@@ -77,4 +83,10 @@ dev\:all: ## Launch full stack (aggregated profiles)
 compose-validate: ## Validate compose file
 	$(COMPOSE) config > /dev/null
 
-.PHONY: help build up stop down ps logs clean format lint test compose-validate gpu-build prefetch-build image-sizes
+deploy-check: ## Deploy and validate core services
+	$(MAKE) up PROFILE=core && sleep 10 && $(MAKE) validate
+
+full-deploy-check: ## Deploy all services and run sanity check
+	$(MAKE) up PROFILE=all && sleep 15 && $(MAKE) sanity
+
+.PHONY: help build up stop down ps logs clean format lint test validate sanity compose-validate gpu-build prefetch-build image-sizes deploy-check full-deploy-check

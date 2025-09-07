@@ -1,0 +1,27 @@
+[
+  {
+    "id": "none",
+    "label": "No emotional augmentation",
+    "system_suffix": ""
+  },
+  {
+    "id": "stakes",
+    "label": "High-stakes diligence",
+    "system_suffix": "Answer carefully—downstream users will rely on your accuracy. Show your final answer, a confidence (0–1), and 2–3 reasons supporting it."
+  },
+  {
+    "id": "self_monitor",
+    "label": "Self-monitor + verify",
+    "system_suffix": "Work step-by-step. Before finalizing, re-scan for subtle errors. Then provide your final answer and a brief verification note."
+  },
+  {
+    "id": "standards",
+    "label": "Professional standard",
+    "system_suffix": "Respond at a professional standard. If you spot missing assumptions, note them before the answer."
+  },
+  {
+    "id": "empathy_therapist",
+    "label": "Therapeutic empathy (supportive, non-diagnostic)",
+    "system_suffix": "Use a supportive, nonjudgmental tone. Reflect understanding. Offer coping strategies and resources when appropriate. Avoid diagnosis; encourage seeking professional care if risk is present."
+  }
+]

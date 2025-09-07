@@ -20,11 +20,26 @@ from typing import List, Dict, Any, Optional
 import re
 import time
 import logging
+import json
+import os
 from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Load emotion templates
+TEMPLATES_PATH = os.getenv("EMOTION_TEMPLATES_PATH", "/app/emotion_templates.json")
+try:
+    with open(TEMPLATES_PATH, "r", encoding="utf-8") as f:
+        EMOTION_TEMPLATES: Dict[str, Dict] = {t["id"]: t for t in json.load(f)}
+    logger.info(f"Loaded {len(EMOTION_TEMPLATES)} emotion templates")
+except FileNotFoundError:
+    logger.warning(f"Emotion templates file not found at {TEMPLATES_PATH}")
+    EMOTION_TEMPLATES: Dict[str, Dict] = {"none": {"id": "none", "label": "No emotional augmentation", "system_suffix": ""}}
+except Exception as e:
+    logger.error(f"Error loading emotion templates: {e}")
+    EMOTION_TEMPLATES: Dict[str, Dict] = {"none": {"id": "none", "label": "No emotional augmentation", "system_suffix": ""}}
 
 app = FastAPI(
     title="Feeling Engine",
@@ -50,6 +65,12 @@ class CritiqueRequest(BaseModel):
     text: str = Field(..., description="Text to critique and clean", max_length=10000)
     max_tokens: int = Field(default=100, description="Maximum tokens to keep")
 
+
+class AugmentRequest(BaseModel):
+    system_prompt: str = Field(..., description="System prompt to augment", max_length=50000)
+    emotion_template_id: Optional[str] = Field(default="none", description="Emotion template ID to apply")
+
+
 class AnalyzeResponse(BaseModel):
     sentiment: str = Field(..., description="Overall sentiment: positive/negative/neutral")
     emotions: List[str] = Field(default=[], description="Detected emotions")
@@ -68,6 +89,27 @@ class CritiqueResponse(BaseModel):
     original_tokens: int = Field(..., description="Original text token count")
     cleaned_tokens: int = Field(..., description="Cleaned text token count")
     changes_made: List[str] = Field(default=[], description="Description of changes")
+
+
+class AugmentResponse(BaseModel):
+    system_prompt: str = Field(..., description="Augmented system prompt")
+    template_id: str = Field(..., description="Applied template ID")
+    template_label: str = Field(..., description="Applied template label")
+
+
+# Utility functions
+def apply_emotion_suffix(system_prompt: str, template_id: Optional[str]) -> Dict[str, str]:
+    """Apply emotion template suffix to system prompt"""
+    tpl = EMOTION_TEMPLATES.get(template_id or "none", EMOTION_TEMPLATES["none"])
+    suffix = (tpl.get("system_suffix") or "").strip()
+    augmented_prompt = system_prompt if not suffix else f"{system_prompt.rstrip()}\n\n{suffix}"
+    
+    return {
+        "system_prompt": augmented_prompt,
+        "template_id": tpl["id"],
+        "template_label": tpl.get("label", "Unknown template")
+    }
+
 
 # Rule-based models for fast inference
 class SentimentAnalyzer:
@@ -424,6 +466,33 @@ async def critique_text(request: CritiqueRequest):
     except Exception as e:
         logger.error(f"Error critiquing text: {e}")
         raise HTTPException(status_code=500, detail=f"Text critique failed: {str(e)}")
+
+
+@app.post("/augment", response_model=AugmentResponse)
+async def augment_system_prompt(request: AugmentRequest):
+    """Apply emotion template to augment system prompt"""
+    try:
+        result = apply_emotion_suffix(request.system_prompt, request.emotion_template_id)
+        
+        return AugmentResponse(
+            system_prompt=result["system_prompt"],
+            template_id=result["template_id"],
+            template_label=result["template_label"]
+        )
+    
+    except Exception as e:
+        logger.error(f"Error augmenting system prompt: {e}")
+        raise HTTPException(status_code=500, detail=f"System prompt augmentation failed: {str(e)}")
+
+
+@app.get("/templates")
+async def get_emotion_templates():
+    """Get available emotion templates"""
+    return {
+        "templates": list(EMOTION_TEMPLATES.values()),
+        "count": len(EMOTION_TEMPLATES)
+    }
+
 
 if __name__ == "__main__":
     import uvicorn

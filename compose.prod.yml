@@ -20,6 +20,12 @@ services:
     environment:
       - GATEWAY_DB=/data/gateway.db
       - ENABLE_PROJECTS=true
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENROUTER_API_BASE=${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1/chat/completions}
+      - OPENROUTER_MODEL_DEFAULT=${OPENROUTER_MODEL_DEFAULT:-openai/gpt-4o-mini}
+      - OPENROUTER_TIMEOUT=${OPENROUTER_TIMEOUT:-60}
+      - FEELING_URL=http://feeling:8103
+      - INTENT_URL=http://intent:8101
     healthcheck:
       test: ["CMD-SHELL","curl -fsS http://localhost:8000/health || exit 1"]
       interval: 30s
@@ -30,6 +36,12 @@ services:
     build: { context: ./01-intent-router }
     restart: unless-stopped
     env_file: [ .env ]
+    environment:
+      - ALLOW_EXTERNAL_FOR_REGULATED=${ALLOW_EXTERNAL_FOR_REGULATED:-0}
+      - OPENROUTER_PRIORITIES_TECH=${OPENROUTER_PRIORITIES_TECH:-openai/gpt-4o,anthropic/claude-3-5-sonnet-20241022,google/gemini-pro-1.5,meta-llama/llama-3.1-70b-instruct,qwen/qwen-2.5-72b-instruct}
+      - OPENROUTER_PRIORITIES_LEGAL=${OPENROUTER_PRIORITIES_LEGAL:-anthropic/claude-3-5-sonnet-20241022,openai/gpt-4o,cohere/command-r-plus,meta-llama/llama-3.1-70b-instruct}
+      - OPENROUTER_PRIORITIES_PSYCHOTHERAPY=${OPENROUTER_PRIORITIES_PSYCHOTHERAPY:-anthropic/claude-3-5-sonnet-20241022,openai/gpt-4o,meta-llama/llama-3.1-70b-instruct}
+      - OPENROUTER_PRIORITIES_REGULATED=${OPENROUTER_PRIORITIES_REGULATED:-meta-llama/llama-3.1-8b-instruct,microsoft/phi-3-mini-128k-instruct,qwen/qwen-2.5-7b-instruct}
     networks: [ owui ]
     expose: [ "8101" ]
     ports: [ "8101:8101" ]

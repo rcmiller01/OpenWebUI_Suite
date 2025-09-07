@@ -6,7 +6,10 @@ WORKDIR /app
 COPY requirements.txt ./requirements.txt
 RUN pip install -r requirements.txt -c /app/constraints.txt
 
+COPY emotion_templates.json /app/emotion_templates.json
 COPY src/ ./src/
+
+ENV EMOTION_TEMPLATES_PATH=/app/emotion_templates.json
 
 EXPOSE 8103
 

@@ -1,343 +1,155 @@
 """
-Rule-based classification engine for fast intent detection.
+Family-based classification engine with model priority routing.
 
-Handles obvious cases with high confidence using pattern matching,
-keywords, and heuristics before falling back to ML models.
+Routes user inputs based on content family (TECH, LEGAL, REGULATED, etc.)
+and provides emotion template and provider recommendations.
 """
 
+import os
 import re
+import time
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Literal, Tuple, Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
+Family = Literal["TECH", "LEGAL", "REGULATED", "PSYCHOTHERAPY",
+                 "GENERAL_PRECISION", "OPEN_ENDED"]
+
+# --- Regex buckets (expandable) ---
+TECH_RX = re.compile(r"\b(code|bug|stacktrace|exception|sql|regex|docker|kubernetes|api|typescript|python|compile|error)\b", re.I)
+LEGAL_RX = re.compile(r"\b(contract|nda|terms|tort|statute|indemnif(y|ication)|warranty|governing law)\b", re.I)
+REG_RX = re.compile(
+    r"\b("
+    r"pci[\s-]?dss|sox|hipaa|hitech|ferpa|coppa|glba|fisma|fedramp|nist\s*800-53|nist\s*csf|iso[\s/:-]*27\d{2}"
+    r"|gdpr|ccpa|cpra|mifid|basel\s*iii|aml|kyc|psd2|eidas|cfpb|ofac|itar|ear|faa|fda|sec\b"
+    r")\b", re.I
+)
+PSY_RX = re.compile(r"\b(therapy|therapist|counsel(or|ing)|anxiety|panic|depress(ed|ion)?|grief|trauma|cope|mental health|feelings)\b", re.I)
+
+
+def classify(text: str) -> Family:
+    """Classify text into content family with precedence order"""
+    t = text[:4000]
+    # precedence: PSY > REG > LEGAL > TECH > PRECISION > OPEN_ENDED
+    if PSY_RX.search(t):
+        return "PSYCHOTHERAPY"
+    if REG_RX.search(t):
+        return "REGULATED"
+    if LEGAL_RX.search(t):
+        return "LEGAL"
+    if TECH_RX.search(t):
+        return "TECH"
+    if re.search(r"\b(prove|derive|exact|step[- ]?by[- ]?step|check|verify|confidence)\b", t, re.I):
+        return "GENERAL_PRECISION"
+    return "OPEN_ENDED"
+
+
+# --- Model priorities (OpenRouter) ---
+def _env_list(name: str, default: List[str]) -> List[str]:
+    """Parse comma-separated environment variable into list"""
+    v = os.getenv(name, "")
+    return default if not v.strip() else [x.strip() for x in v.split(",") if x.strip()]
+
+
+# Replace slugs with the exact ones in your OpenRouter account
+GPT_4O = "openai/gpt-4o"
+GPT_4O_MINI = "openai/gpt-4o-mini"
+CLAUDE_SONNET = "anthropic/claude-3-5-sonnet-20241022"
+QWEN_72B = "qwen/qwen-2.5-72b-instruct"
+LLAMA_70B = "meta-llama/llama-3.1-70b-instruct"
+
+DEFAULT_OR_PRIORITY = [GPT_4O_MINI, CLAUDE_SONNET, GPT_4O, LLAMA_70B, QWEN_72B]
+FAMILY_PRIORITIES: Dict[Family, List[str]] = {
+    "TECH": _env_list("OPENROUTER_PRIORITIES_TECH", DEFAULT_OR_PRIORITY),
+    "LEGAL": _env_list("OPENROUTER_PRIORITIES_LEGAL", DEFAULT_OR_PRIORITY),
+    "PSYCHOTHERAPY": _env_list("OPENROUTER_PRIORITIES_PSYCHOTHERAPY", DEFAULT_OR_PRIORITY),
+    "REGULATED": _env_list("OPENROUTER_PRIORITIES_REGULATED", DEFAULT_OR_PRIORITY),
+    "GENERAL_PRECISION": [],
+    "OPEN_ENDED": [],
+}
+
+ALLOW_EXTERNAL_FOR_REGULATED = os.getenv("ALLOW_EXTERNAL_FOR_REGULATED", "0") == "1"
+
+
+def policy_for_family(f: Family) -> Tuple[str, str]:
+    """Map family -> (emotion_template_id, provider)"""
+    if f == "TECH":
+        return ("none", "openrouter")
+    if f == "LEGAL":
+        return ("none", "openrouter")
+    if f == "PSYCHOTHERAPY":
+        return ("empathy_therapist", "openrouter")
+    if f == "GENERAL_PRECISION":
+        return ("self_monitor", "local")
+    if f == "OPEN_ENDED":
+        return ("stakes", "local")
+    if f == "REGULATED":
+        return ("none", "openrouter" if ALLOW_EXTERNAL_FOR_REGULATED else "local")
+    return ("stakes", "local")
+
+
+def build_route(user_text: str, tags_in=None):
+    """Build routing decision based on user text and optional tags"""
+    family = classify(user_text)
+    tpl, provider = policy_for_family(family)
+    tags = list(tags_in or [])
+    
+    if family in ("TECH", "LEGAL", "REGULATED") and "no_emotion" not in tags:
+        tags.append("no_emotion")
+    if family == "PSYCHOTHERAPY" and "psychotherapy" not in tags:
+        tags.append("psychotherapy")
+    
+    return {
+        "family": family,
+        "emotion_template_id": tpl,
+        "provider": provider,
+        "openrouter_model_priority": FAMILY_PRIORITIES.get(family, []),
+        "tags": tags
+    }
+
 
 class RuleEngine:
-    """Fast rule-based intent classifier"""
+    """Family-based classification and routing engine"""
     
     def __init__(self):
         """Initialize rule patterns and keywords"""
-        self.intent_patterns = self._load_patterns()
         self.confidence_threshold = 0.9  # High threshold for rule-based confidence
+        logger.info("Initialized family-based rule engine")
         
-    def _load_patterns(self) -> Dict[str, Dict[str, Any]]:
-        """Load classification patterns for each intent"""
-        return {
-            "emotional": {
-                "keywords": [
-                    "feel", "feeling", "sad", "happy", "angry", "depressed", "anxious",
-                    "worried", "scared", "excited", "lonely", "frustrated", "confused",
-                    "love", "hate", "cry", "tears", "heart", "soul", "emotion",
-                    "relationship", "boyfriend", "girlfriend", "family", "friend",
-                    "support", "help me", "advice", "personal", "therapy", "counseling"
-                ],
-                "patterns": [
-                    r"i feel\s+\w+",
-                    r"i am\s+(sad|happy|angry|depressed|anxious|worried)",
-                    r"makes? me\s+(feel|sad|happy|angry)",
-                    r"my\s+(heart|feelings|emotions?)",
-                    r"need\s+(someone|help|support|advice)"
-                ],
-                "phrases": [
-                    "how are you feeling",
-                    "i need someone to talk to",
-                    "i'm going through",
-                    "emotional support",
-                    "feeling overwhelmed"
-                ]
-            },
-            
-            "technical": {
-                "keywords": [
-                    "code", "programming", "python", "javascript", "java", "c++", "html",
-                    "css", "react", "api", "database", "sql", "algorithm", "function",
-                    "class", "method", "variable", "loop", "if", "else", "import",
-                    "debug", "error", "exception", "syntax", "compile", "runtime",
-                    "framework", "library", "package", "install", "git", "github"
-                ],
-                "patterns": [
-                    r"```[\w]*\n.*?```",  # Code blocks
-                    r"`[^`]+`",  # Inline code
-                    r"def\s+\w+\(",  # Python function definition
-                    r"function\s+\w+\(",  # JavaScript function
-                    r"class\s+\w+",  # Class definition
-                    r"import\s+\w+",  # Import statements
-                    r"from\s+\w+\s+import",  # Python imports
-                    r"#include\s*<",  # C++ includes
-                    r"<!DOCTYPE|<html|<head|<body",  # HTML
-                    r"SELECT|INSERT|UPDATE|DELETE.*FROM",  # SQL
-                    r"npm\s+install|pip\s+install",  # Package installation
-                ],
-                "phrases": [
-                    "how do i implement",
-                    "write a function",
-                    "debug this code",
-                    "programming question",
-                    "software development"
-                ]
-            },
-            
-            "recipes": {
-                "keywords": [
-                    "recipe", "cook", "cooking", "bake", "baking", "kitchen", "ingredients",
-                    "flour", "sugar", "salt", "pepper", "oil", "butter", "eggs", "milk",
-                    "oven", "stove", "pan", "pot", "dish", "meal", "food", "eat",
-                    "breakfast", "lunch", "dinner", "dessert", "appetizer", "main course",
-                    "tablespoon", "teaspoon", "cup", "cups", "minutes", "degrees",
-                    "temperature", "heat", "boil", "fry", "grill", "roast", "mix"
-                ],
-                "patterns": [
-                    r"\d+\s*(cups?|tbsp|tsp|tablespoons?|teaspoons?)",
-                    r"\d+\s*degrees?",
-                    r"\d+\s*minutes?",
-                    r"preheat.*oven",
-                    r"serves?\s*\d+"
-                ],
-                "phrases": [
-                    "how to cook",
-                    "recipe for",
-                    "cooking instructions",
-                    "baking recipe",
-                    "food preparation"
-                ]
-            },
-            
-            "finance": {
-                "keywords": [
-                    "money", "dollar", "dollars", "investment", "invest", "stock", "stocks",
-                    "market", "trading", "portfolio", "budget", "budgeting", "savings",
-                    "bank", "banking", "loan", "credit", "debt", "mortgage", "insurance",
-                    "tax", "taxes", "ira", "401k", "retirement", "pension", "dividend",
-                    "interest", "rate", "rates", "bond", "bonds", "mutual fund", "etf",
-                    "cryptocurrency", "bitcoin", "ethereum", "price", "cost", "expense"
-                ],
-                "patterns": [
-                    r"\$\d+(?:,\d{3})*(?:\.\d{2})?",  # Dollar amounts
-                    r"\d+(?:,\d{3})*\s*dollars?",
-                    r"\d+\.?\d*%",  # Percentages
-                    r"stock\s+symbol",
-                    r"ticker\s+symbol"
-                ],
-                "phrases": [
-                    "financial advice",
-                    "investment strategy",
-                    "retirement planning",
-                    "budget planning",
-                    "money management"
-                ]
-            },
-            
-            "mm_image": {
-                "keywords": [
-                    "image", "picture", "photo", "photograph", "visual", "see", "look",
-                    "show", "display", "view", "screenshot", "drawing", "diagram",
-                    "chart", "graph", "illustration", "art", "design", "color", "pixel"
-                ],
-                "patterns": [
-                    r"what.*in.*image",
-                    r"describe.*picture",
-                    r"analyze.*photo",
-                    r"what.*see"
-                ],
-                "phrases": [
-                    "what is in this image",
-                    "describe this picture",
-                    "analyze this photo",
-                    "what do you see",
-                    "image analysis"
-                ]
-            },
-            
-            "mm_audio": {
-                "keywords": [
-                    "audio", "sound", "music", "song", "voice", "speech", "listen",
-                    "hear", "recording", "microphone", "speaker", "volume", "bass",
-                    "treble", "frequency", "pitch", "tempo", "rhythm", "melody"
-                ],
-                "patterns": [
-                    r"play.*music",
-                    r"listen.*to",
-                    r"audio.*file",
-                    r"sound.*like"
-                ],
-                "phrases": [
-                    "play this audio",
-                    "what is this song",
-                    "analyze this audio",
-                    "transcribe this",
-                    "audio processing"
-                ]
-            }
+    def classify(self, text: str, context: Optional[Dict] = None) -> Dict[str, Any]:
+        """Classify input text and return routing information"""
+        start_time = time.time()
+        
+        # Get family classification and routing info
+        route_info = build_route(text, context.get("tags") if context else None)
+        
+        processing_time = (time.time() - start_time) * 1000
+        
+        # Map family to intent for backward compatibility
+        family_to_intent = {
+            "TECH": "technical",
+            "LEGAL": "legal", 
+            "REGULATED": "compliance",
+            "PSYCHOTHERAPY": "emotional",
+            "GENERAL_PRECISION": "analytical",
+            "OPEN_ENDED": "general"
         }
-    
-    def classify(
-        self, 
-        text: str, 
-        attachments: Optional[List[Any]] = None,
-        last_intent: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Classify text using rule-based patterns
         
-        Returns:
-            dict: {
-                "intent": str,
-                "confidence": float,
-                "confident": bool,
-                "needs_remote": bool,
-                "reasoning": str
-            }
-        """
-        text_lower = text.lower()
-        scores = {}
+        intent = family_to_intent.get(route_info["family"], "general")
         
-        # Check for attachment-based classification first
-        if attachments:
-            for attachment in attachments:
-                if hasattr(attachment, 'type'):
-                    attachment_type = attachment.type
-                elif isinstance(attachment, dict):
-                    attachment_type = attachment.get('type', '')
-                else:
-                    attachment_type = str(attachment)
-                
-                if 'image' in attachment_type.lower():
-                    return {
-                        "intent": "mm_image",
-                        "confidence": 0.95,
-                        "confident": True,
-                        "needs_remote": True,
-                        "reasoning": "Image attachment detected"
-                    }
-                elif 'audio' in attachment_type.lower():
-                    return {
-                        "intent": "mm_audio", 
-                        "confidence": 0.95,
-                        "confident": True,
-                        "needs_remote": True,
-                        "reasoning": "Audio attachment detected"
-                    }
-        
-        # Score each intent based on patterns
-        for intent, patterns in self.intent_patterns.items():
-            score = 0
-            matches = []
-            
-            # Keyword matching
-            keyword_matches = 0
-            for keyword in patterns["keywords"]:
-                if keyword in text_lower:
-                    keyword_matches += 1
-                    matches.append(f"keyword:{keyword}")
-            
-            # Pattern matching
-            pattern_matches = 0
-            for pattern in patterns["patterns"]:
-                if re.search(pattern, text_lower, re.IGNORECASE | re.DOTALL):
-                    pattern_matches += 1
-                    matches.append(f"pattern:{pattern[:20]}...")
-            
-            # Phrase matching  
-            phrase_matches = 0
-            for phrase in patterns["phrases"]:
-                if phrase in text_lower:
-                    phrase_matches += 1
-                    matches.append(f"phrase:{phrase}")
-            
-            # Calculate weighted score
-            score = (
-                keyword_matches * 0.3 +
-                pattern_matches * 0.5 + 
-                phrase_matches * 0.7
-            )
-            
-            # Normalize by text length (favor shorter, focused text)
-            text_words = len(text.split())
-            if text_words > 0:
-                score = score / (1 + text_words / 20)
-            
-            scores[intent] = {
-                "score": score,
-                "matches": matches,
-                "keyword_matches": keyword_matches,
-                "pattern_matches": pattern_matches,
-                "phrase_matches": phrase_matches
-            }
-        
-        # Find best intent
-        if not scores:
-            return {
-                "intent": "general",
-                "confidence": 0.1,
-                "confident": False,
-                "needs_remote": len(text) > 100,
-                "reasoning": "No patterns matched"
-            }
-        
-        best_intent = max(scores.keys(), key=lambda x: scores[x]["score"])
-        best_score = scores[best_intent]["score"]
-        
-        # Convert score to confidence (0-1)
-        confidence = min(0.95, best_score / 3.0)  # Cap at 0.95
-        
-        # Consider context from last intent
-        if last_intent and last_intent == best_intent:
-            confidence += 0.1  # Boost confidence for context continuity
-            confidence = min(0.95, confidence)
-        
-        # Determine if we're confident enough
-        confident = confidence >= self.confidence_threshold and best_score > 1.0
-        
-        # Determine remote processing needs
-        needs_remote = self._needs_remote_processing(
-            text, best_intent, confidence, attachments
-        )
+        # Determine if remote processing is needed
+        needs_remote = route_info["provider"] == "openrouter"
         
         return {
-            "intent": best_intent,
-            "confidence": confidence,
-            "confident": confident,
+            "intent": intent,
+            "family": route_info["family"],
+            "emotion_template_id": route_info["emotion_template_id"],
+            "provider": route_info["provider"],
+            "openrouter_model_priority": route_info["openrouter_model_priority"],
+            "tags": route_info["tags"],
+            "confidence": self.confidence_threshold,
             "needs_remote": needs_remote,
-            "reasoning": f"Score: {best_score:.2f}, matches: {len(scores[best_intent]['matches'])}"
+            "processing_time_ms": processing_time,
+            "reasoning": f"Family: {route_info['family']}, Provider: {route_info['provider']}, Template: {route_info['emotion_template_id']}"
         }
-    
-    def _needs_remote_processing(
-        self,
-        text: str,
-        intent: str,
-        confidence: float,
-        attachments: Optional[List[Any]] = None
-    ) -> bool:
-        """Determine if remote processing is needed"""
-        
-        # Always remote for multimodal
-        if intent in ["mm_image", "mm_audio"]:
-            return True
-        
-        # Long text needs remote
-        if len(text) > 800:
-            return True
-        
-        # Low confidence suggests complexity
-        if confidence < 0.7:
-            return True
-        
-        # Complex technical questions
-        if intent == "technical":
-            complex_indicators = [
-                "implement", "algorithm", "design pattern", "architecture",
-                "optimization", "performance", "scalability", "security"
-            ]
-            if any(indicator in text.lower() for indicator in complex_indicators):
-                return True
-        
-        # Complex financial analysis
-        if intent == "finance":
-            complex_indicators = [
-                "analysis", "strategy", "portfolio", "optimization", 
-                "risk assessment", "market analysis"
-            ]
-            if any(indicator in text.lower() for indicator in complex_indicators):
-                return True
-        
-        return False

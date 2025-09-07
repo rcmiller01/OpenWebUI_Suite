@@ -7,12 +7,104 @@ rule_files:
   # - "second_rules.yml"
 
 scrape_configs:
-  - job_name: 'telemetry-cache'
+  # OpenWebUI Suite Services
+  - job_name: 'gateway'
     static_configs:
-      - targets: ['telemetry-cache:8000']
+      - targets: ['gateway:8000']
     metrics_path: '/metrics'
     scrape_interval: 5s
 
+  - job_name: 'intent'
+    static_configs:
+      - targets: ['intent:8101']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'memory'
+    static_configs:
+      - targets: ['memory:8102']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'feeling'
+    static_configs:
+      - targets: ['feeling:8103']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'merger'
+    static_configs:
+      - targets: ['merger:8104']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'drive'
+    static_configs:
+      - targets: ['drive:8105']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'tools'
+    static_configs:
+      - targets: ['tools:8106']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'tandoor'
+    static_configs:
+      - targets: ['tandoor:8107']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'openbb'
+    static_configs:
+      - targets: ['openbb:8108']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'daemon'
+    static_configs:
+      - targets: ['daemon:8109']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'multimodal'
+    static_configs:
+      - targets: ['multimodal:8110']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'stt-tts'
+    static_configs:
+      - targets: ['stt-tts:8111']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'avatar'
+    static_configs:
+      - targets: ['avatar:8112']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'policy'
+    static_configs:
+      - targets: ['policy:8113']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'telemetry'
+    static_configs:
+      - targets: ['telemetry:8114']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  - job_name: 'fastvlm'
+    static_configs:
+      - targets: ['fastvlm:8115']
+    metrics_path: '/metrics'
+    scrape_interval: 5s
+
+  # Infrastructure Services
   - job_name: 'redis'
     static_configs:
       - targets: ['redis:6379']
@@ -22,3 +114,4 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+    scrape_interval: 15s

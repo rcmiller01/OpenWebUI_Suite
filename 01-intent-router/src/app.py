@@ -11,7 +11,7 @@ from typing import Optional, List, Dict
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from .classifier import IntentClassifier
-from .rules import RuleEngine
+from .rules import RuleEngine, build_route
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -152,8 +152,7 @@ async def classify_intent(request: ClassificationRequest):
         assert rule_engine is not None  # runtime invariant after startup
         rule_result = rule_engine.classify(
             text=request.text,
-            attachments=request.attachments,
-            last_intent=request.last_intent
+            context={"attachments": request.attachments, "last_intent": request.last_intent}
         )
         
         if rule_result["confident"]:
@@ -257,6 +256,41 @@ def _should_use_remote(
     return False
 
 
+class RouteRequest(BaseModel):
+    """Request model for routing"""
+    user_text: str = Field(..., description="User input text to route", max_length=10000)
+    tags: Optional[List[str]] = Field(default=None, description="Optional tags to consider")
+
+
+class RouteResponse(BaseModel):
+    """Response model for routing"""
+    family: str = Field(..., description="Content family classification")
+    emotion_template_id: str = Field(..., description="Emotion template to apply")
+    provider: str = Field(..., description="Recommended provider (local/openrouter)")
+    openrouter_model_priority: List[str] = Field(..., description="Prioritized model list for OpenRouter")
+    tags: List[str] = Field(..., description="Applied tags")
+
+
+@app.post("/route", response_model=RouteResponse)
+async def route(request: RouteRequest):
+    """Route user input based on content family and return processing recommendations"""
+    try:
+        # Use the new family-based routing
+        route_info = build_route(request.user_text, request.tags)
+        
+        return RouteResponse(
+            family=route_info["family"],
+            emotion_template_id=route_info["emotion_template_id"],
+            provider=route_info["provider"],
+            openrouter_model_priority=route_info["openrouter_model_priority"],
+            tags=route_info["tags"]
+        )
+    
+    except Exception as e:
+        logger.error(f"Error in routing: {e}")
+        raise HTTPException(status_code=500, detail=f"Routing failed: {str(e)}")
+
+
 @app.get("/")
 async def root():
     """Root endpoint with service info"""
@@ -266,6 +300,7 @@ async def root():
         "description": "Fast intent classification for OpenWebUI Suite",
         "endpoints": {
             "classify": "/classify",
+            "route": "/route",
             "health": "/health"
         }
     }
