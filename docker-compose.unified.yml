@@ -232,23 +232,6 @@ services:
       timeout: 5s
       retries: 3
 
-  15-bytebot-gateway:
-    build:
-      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/15-bytebot-gateway
-    restart: unless-stopped
-    env_file:
-      - .env
-    networks:
-      - owui
-    depends_on:
-      - 01-intent-router
-      - 00-pipelines-gateway
-    healthcheck:
-      test: ["CMD-SHELL", "python -c 'import socket; exit(0)'"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
   16-fastvlm-sidecar:
     build:
       context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/16-fastvlm-sidecar
