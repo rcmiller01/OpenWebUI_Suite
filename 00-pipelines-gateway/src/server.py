@@ -19,6 +19,7 @@ from src.util.http import (  # type: ignore
 )
 from src.tasks import TaskQueue, worker_loop  # type: ignore
 from src.router.providers import get_model_router  # type: ignore
+from src.projects import router as projects_router  # type: ignore
 
 ENABLE_OTEL = os.getenv("ENABLE_OTEL", "false").lower() == "true"
 OTEL_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -97,6 +98,7 @@ if ENABLE_OTEL:
         ENABLE_OTEL = False
 
 app = FastAPI(title="Pipelines Gateway", version="0.4.0")
+app.include_router(projects_router)
 
 if ENABLE_OTEL:
     try:

@@ -197,7 +197,6 @@ jobs:
           - 11-stt-tts-gateway
           - 13-policy-guardrails
           - 14-telemetry-cache
-          - 15-bytebot-gateway
           - 16-fastvlm-sidecar
     steps:
       - name: Checkout
