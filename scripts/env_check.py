@@ -2,6 +2,12 @@
 """
 Environment Variable Configuration Manager for OpenWebUI Suite
 Checks for missing environment variables and prompts for them interactively.
+
+Environment Variables for Service Control:
+- ENABLE_TANDOOR=1      : Enable Tandoor sidecar validation
+- ENABLE_OPENBB=1       : Enable OpenBB sidecar validation  
+- COMPOSE_PROFILES      : Comma-separated profiles (e.g., "extras,ui")
+- REQUIRE_EXTRAS_STRICT : If 1, require extras when profiles include them
 """
 
 import os
@@ -9,6 +15,33 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 import re
+
+
+def _on(v):  # truthy env helper
+    return str(v).lower() in ("1", "true", "yes", "on")
+
+
+ENABLE_TANDOOR = _on(os.getenv("ENABLE_TANDOOR", "0"))
+ENABLE_OPENBB  = _on(os.getenv("ENABLE_OPENBB",  "0"))
+
+# Profiles from systemd or shell (e.g., COMPOSE_PROFILES=extras,ui)
+EXTRA_PROFILES = {p.strip() for p in os.getenv("COMPOSE_PROFILES", "").split(",") if p.strip()}
+
+# If you want CI to be strict later, flip this to 1. For first-time deploys, keep 0.
+REQUIRE_EXTRAS_STRICT = _on(os.getenv("REQUIRE_EXTRAS_STRICT", "0"))
+
+
+def service_enabled(name: str) -> bool:
+    """
+    A service is 'enabled' for validation if either:
+      - You explicitly set ENABLE_<NAME>=1, OR
+      - (Strict mode) the 'extras' profile is on (or the service's own profile).
+    """
+    if name == "tandoor":
+        return ENABLE_TANDOOR or (REQUIRE_EXTRAS_STRICT and ("extras" in EXTRA_PROFILES or "tandoor" in EXTRA_PROFILES))
+    if name == "openbb":
+        return ENABLE_OPENBB  or (REQUIRE_EXTRAS_STRICT and ("extras" in EXTRA_PROFILES or "openbb" in EXTRA_PROFILES))
+    return True
 
 
 # Environment variable definitions for each service
@@ -344,6 +377,15 @@ def check_missing_variables(env_vars: Dict[str, str]) -> List[tuple]:
     missing = []
     
     for service, variables in ENV_VARIABLES.items():
+        # Check if service should be validated
+        service_name = service.lower().replace("_sidecar", "").replace("_", "")
+        
+        # Skip validation for disabled services
+        if service == "TANDOOR_SIDECAR" and not service_enabled("tandoor"):
+            continue
+        if service == "OPENBB_SIDECAR" and not service_enabled("openbb"):
+            continue
+            
         for var_name, var_config in variables.items():
             if var_config.get("required", False) and var_name not in env_vars:
                 missing.append((service, var_name, var_config))
@@ -360,6 +402,14 @@ def print_service_status(env_vars: Dict[str, str]) -> None:
     for service, variables in ENV_VARIABLES.items():
         print(f"\n📦 {service}")
         print("-" * 40)
+        
+        # Check if service is disabled
+        if service == "TANDOOR_SIDECAR" and not service_enabled("tandoor"):
+            print("⚪ DISABLED (ENABLE_TANDOOR=0; not required)")
+            continue
+        if service == "OPENBB_SIDECAR" and not service_enabled("openbb"):
+            print("⚪ DISABLED (ENABLE_OPENBB=0; not required)")
+            continue
         
         for var_name, var_config in variables.items():
             status = "✅ SET" if var_name in env_vars else "❌ MISSING"
@@ -428,6 +478,12 @@ def main():
             
             if response in ['y', 'yes']:
                 for service, variables in ENV_VARIABLES.items():
+                    # Skip disabled services for optional variables too
+                    if service == "TANDOOR_SIDECAR" and not service_enabled("tandoor"):
+                        continue
+                    if service == "OPENBB_SIDECAR" and not service_enabled("openbb"):
+                        continue
+                        
                     for var_name, var_config in variables.items():
                         if not var_config.get("required", False) and var_name not in env_vars:
                             print(f"\n📦 Service: {service}")
