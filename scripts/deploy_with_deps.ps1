@@ -23,6 +23,26 @@ function Test-Directory {
     }
 }
 
+function Test-EnvironmentVariables {
+    Write-Info "Checking environment variables..."
+    
+    # Run environment checker
+    if (Test-Path "scripts/env_check.py") {
+        $envCheckResult = & python scripts/env_check.py
+        $envCheckStatus = $LASTEXITCODE
+        
+        if ($envCheckStatus -ne 0) {
+            Write-Error "Environment variable check failed!"
+            Write-Host "Some required variables are missing. Please configure them before deploying." -ForegroundColor Red
+            exit 1
+        }
+        
+        Write-Success "Environment variables configured!"
+    } else {
+        Write-Warn "Environment checker not found, skipping validation..."
+    }
+}
+
 function New-DeployBranch {
     Write-Info "Creating/switching to deploy branch: $DeployBranch"
     
@@ -286,6 +306,7 @@ function Main {
     Write-Info "Starting OpenWebUI Suite deployment preparation..."
     
     Test-Directory
+    Test-EnvironmentVariables
     New-DeployBranch
     Set-ExternalDeps
     Get-TandoorRepo
