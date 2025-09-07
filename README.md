@@ -116,6 +116,8 @@ This project consists of five interconnected repositories:
 |----------|---------|-------------|
 | `OLLAMA_HOST` | `http://core2-gpu:11434` | Ollama server endpoint |
 | `OWUI_MEMORY_PATH` | `./data/memory.sqlite` | Plugin memory store path |
+| `GATEWAY_DB` | `/data/gateway.db` | Gateway projects database path |
+| `ENABLE_PROJECTS` | `false` | Enable projects UI sidebar (set to `1` or `true`) |
 
 ## Development Workflow
 
@@ -179,6 +181,34 @@ X-Force-Local: true
 ```
 
 Metrics counters include file uploads, snippet injections, and remote/local decision tallies.
+
+## Projects Feature (Gateway)
+
+The gateway includes a lightweight projects system for organizing conversations:
+
+- **Backend**: SQLite-based storage (`GATEWAY_DB` env var)
+- **API**: REST endpoints at `/projects/*` for CRUD operations
+- **Storage**: Volume mount at `/data` recommended for persistence
+- **UI**: Optional sidebar component (feature flag `ENABLE_PROJECTS`)
+
+Example usage:
+
+```bash
+# Create project
+curl -X POST http://localhost:8088/projects \
+  -H "Content-Type: application/json" \
+  -d '{"name":"My Project"}'
+
+# Add conversation to project
+curl -X POST http://localhost:8088/projects/{project_id}/items \
+  -H "Content-Type: application/json" \
+  -d '{"convo_id":"conversation-uuid"}'
+
+# List project conversations
+curl http://localhost:8088/projects/{project_id}/items
+```
+
+For UI integration, set `ENABLE_PROJECTS=1` and import `ProjectsSidebar` component.
 
 ## License
 

@@ -4,7 +4,7 @@ global:
 scrape_configs:
   - job_name: gateway
     static_configs:
-      - targets: ["gateway:8088"]
+      - targets: ["gateway:8000"]
   - job_name: intent-router
     static_configs:
       - targets: ["intent-router:8101"]
@@ -40,7 +40,7 @@ scrape_configs:
       - targets: ["stt-tts:8089"]
   - job_name: policy
     static_configs:
-      - targets: ["policy:8113"]
+      - targets: ["policy:8001"]
   - job_name: telemetry
     static_configs:
       - targets: ["telemetry:8000"]

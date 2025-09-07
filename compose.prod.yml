@@ -1,0 +1,193 @@
+name: root
+
+services:
+  gateway:
+    build: { context: ./gateway }
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    depends_on:
+      policy: { condition: service_started }
+      intent: { condition: service_started }
+      memory: { condition: service_started }
+      feeling: { condition: service_started }
+      telemetry: { condition: service_started }
+    ports: [ "8000:8000" ]
+    extra_hosts: [ "host.docker.internal:host-gateway" ]
+    volumes:
+      - gateway_data:/data
+    healthcheck:
+      test: ["CMD-SHELL","curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  policy:
+    build: { context: ./policy }
+    restart: unless-stopped
+    env_file: [ .env ]
+    expose: [ "8001" ]
+    ports:  [ "8001:8001" ]
+    networks:
+      owui:
+        aliases: [ policy ]
+    healthcheck:
+      test: ["CMD-SHELL","curl -fsS http://localhost:8001/health || curl -fsS http://localhost:8001/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  telemetry:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    networks: [ owui ]
+    volumes:
+      - ./telemetry/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL","curl -fsS http://localhost:9090/-/ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  memory:
+    build: { context: ./memory }
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    healthcheck:
+      test: ["CMD-SHELL","python - <<'PY'\nimport socket; raise SystemExit(0)\nPY"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  feeling:
+    build: { context: ./feeling }
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    healthcheck:
+      test: ["CMD-SHELL","python - <<'PY'\nimport socket; raise SystemExit(0)\nPY"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  intent:
+    build: { context: ./intent }
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    depends_on:
+      policy: { condition: service_started }
+      memory: { condition: service_started }
+    healthcheck:
+      test: ["CMD-SHELL","python - <<'PY'\nimport socket; raise SystemExit(0)\nPY"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --- Extras (enabled; adjust as needed) ---
+
+  byof:
+    build: { context: ./byof }
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    healthcheck:
+      test: ["CMD-SHELL","python - <<'PY'\nimport socket; raise SystemExit(0)\nPY"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  drive:
+    build: { context: ./drive }
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    healthcheck:
+      test: ["CMD-SHELL","python - <<'PY'\nimport socket; raise SystemExit(0)\nPY"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  merger:
+    build: { context: ./merger }
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    healthcheck:
+      test: ["CMD-SHELL","python - <<'PY'\nimport socket; raise SystemExit(0)\nPY"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  multimodal:
+    build: { context: ./multimodal }
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    extra_hosts: [ "host.docker.internal:host-gateway" ]
+    healthcheck:
+      test: ["CMD-SHELL","python - <<'PY'\nimport socket; raise SystemExit(0)\nPY"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  avatar:
+    build: { context: ./avatar }
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    healthcheck:
+      test: ["CMD-SHELL","python - <<'PY'\nimport socket; raise SystemExit(0)\nPY"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  openbb:
+    build: { context: ./openbb }
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    healthcheck:
+      test: ["CMD-SHELL","python - <<'PY'\nimport socket; raise SystemExit(0)\nPY"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  tandoor:
+    build: { context: ./tandoor }   # keep this folder in repo with a Dockerfile
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    healthcheck:
+      test: ["CMD-SHELL","python - <<'PY'\nimport socket; raise SystemExit(0)\nPY"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --- UI (OpenWebUI app) ---
+
+  openwebui-suite:
+    build:
+      context: ./openwebui-suite
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    env_file: [ .env ]
+    networks: [ owui ]
+    depends_on:
+      gateway: { condition: service_started }
+    # set after you confirm EXPOSE in Dockerfile; 3000 is common:
+    # ports: [ "3000:3000" ]
+    healthcheck:
+      test: ["CMD-SHELL","python - <<'PY'\nimport socket; raise SystemExit(0)\nPY"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  owui:
+    external: true
+    name: ${OWUI_NETWORK:-root_owui}
+
+volumes:
+  gateway_data: {}

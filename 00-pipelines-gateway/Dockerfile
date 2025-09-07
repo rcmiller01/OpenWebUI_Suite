@@ -26,6 +26,11 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 ENV HOST=0.0.0.0
 ENV PORT=8088
 ENV LOG_LEVEL=INFO
+ENV GATEWAY_DB=/data/gateway.db
+
+# Create data directory and set volume
+RUN mkdir -p /data
+VOLUME ["/data"]
 
 # Start the application
 CMD ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8088"]
