@@ -5,39 +5,42 @@ scrape_configs:
   - job_name: gateway
     static_configs:
       - targets: ["gateway:8000"]
-  - job_name: intent-router
+  - job_name: intent
     static_configs:
-      - targets: ["intent-router:8101"]
+      - targets: ["intent:8101"]
   - job_name: memory
     static_configs:
       - targets: ["memory:8102"]
-  - job_name: feeling-engine
+  - job_name: feeling
     static_configs:
-      - targets: ["feeling-engine:8103"]
+      - targets: ["feeling:8103"]
   - job_name: merger
     static_configs:
       - targets: ["merger:8104"]
-  - job_name: drive-state
+  - job_name: drive
     static_configs:
-      - targets: ["drive-state:8105"]
-  - job_name: tool-hub
+      - targets: ["drive:8105"]
+  - job_name: byof
     static_configs:
-      - targets: ["tool-hub:8106"]
+      - targets: ["byof:8106"]
   - job_name: tandoor
     static_configs:
       - targets: ["tandoor:8107"]
   - job_name: openbb
     static_configs:
       - targets: ["openbb:8108"]
-  - job_name: proactive
+  - job_name: daemon
     static_configs:
-      - targets: ["proactive-daemon:8090"]
-  - job_name: multimodal-router
+      - targets: ["daemon:8109"]
+  - job_name: multimodal
     static_configs:
-      - targets: ["multimodal-router:8110"]
+      - targets: ["multimodal:8110"]
   - job_name: stt-tts
     static_configs:
       - targets: ["stt-tts:8111"]
+  - job_name: avatar
+    static_configs:
+      - targets: ["avatar:8112"]
   - job_name: policy
     static_configs:
       - targets: ["policy:8113"]

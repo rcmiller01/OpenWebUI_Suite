@@ -267,7 +267,7 @@ services:
   openwebui-suite:
     build:
       context: ./openwebui-suite
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
     restart: unless-stopped
     env_file: [ .env ]
     networks: [ owui ]
