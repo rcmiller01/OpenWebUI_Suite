@@ -1,9 +1,10 @@
-# Manual Memory Service Deployment Commands
-# Copy and paste these commands one by one on your Docker host
+# Memory Service - Fixed Deployment Commands
+# Run these commands on your Docker host (192.168.50.15)
+# This version fixes the requirements.txt docstring issue
 
 # 1. Create working directory
-mkdir -p /tmp/memory-deploy
-cd /tmp/memory-deploy
+mkdir -p /tmp/memory-deploy-fixed
+cd /tmp/memory-deploy-fixed
 
 # 2. Download the service package  
 curl -L -o memory-service.zip "https://raw.githubusercontent.com/rcmiller01/OpenWebUI_Suite/main/memory-service.zip"
@@ -11,10 +12,16 @@ curl -L -o memory-service.zip "https://raw.githubusercontent.com/rcmiller01/Open
 # 3. Extract files
 unzip -o memory-service.zip
 
-# 4. List extracted files to verify
-ls -la
+# 4. Fix the requirements.txt file (remove invalid docstring)
+cat > requirements.txt << 'EOF'
+# Memory service dependencies
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+EOF
 
-# 5. Create the standalone Dockerfile (this will overwrite the problematic one)
+# 5. Create the standalone Dockerfile
 cat > Dockerfile << 'EOF'
 FROM python:3.11-slim
 
@@ -40,9 +47,12 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8102"]
 EOF
 
-# 6. Verify the Dockerfile was created correctly
-echo "Dockerfile first few lines:"
-head -5 Dockerfile
+# 6. Verify files are correct
+echo "=== Checking requirements.txt ==="
+cat requirements.txt
+
+echo "=== Checking if src/app.py exists ==="
+ls -la src/
 
 # 7. Build the Docker image
 docker build -t owui/memory-2.0:latest .
@@ -62,9 +72,11 @@ docker run -d \
 sleep 15
 
 # 11. Test health endpoint
+echo "=== Testing health endpoint ==="
 curl http://localhost:8102/healthz
 
 # 12. Check container status
+echo "=== Container status ==="
 docker ps | grep memory-service
 
-# Expected output: {"ok": true, "service": "memory-2.0"}
+# Expected: {"ok": true, "service": "memory-2.0"}

@@ -1,6 +1,5 @@
-"""Memory service dependencies (core stack via constraints.txt).
-Install with: pip install -r requirements.txt -c ../constraints.txt
-"""
+# Memory service dependencies (core stack via constraints.txt)
+# Install with: pip install -r requirements.txt -c ../constraints.txt
 
 fastapi
 uvicorn[standard]
