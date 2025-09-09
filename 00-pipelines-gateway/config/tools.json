@@ -1,97 +1,45 @@
-{
-  "built_in_tools": [
-    "calculator",
-    "web_search"
-  ],
-  "external_tools": [
-    {
-      "name": "code_analyzer",
-      "description": "Analyze code for bugs and improvements",
-      "module": "tools.code_analyzer",
-      "enabled": false,
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "description": "Code to analyze"
-          },
-          "language": {
-            "type": "string",
-            "description": "Programming language",
-            "enum": ["python", "javascript", "typescript", "java", "cpp"]
-          }
+[
+  {
+    "name": "n8n_router",
+    "description": "Dispatch an action to local n8n workflow automation",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "type": "string",
+          "enum": ["proxmox", "git", "deploy", "backup"],
+          "description": "Action family/category"
         },
-        "required": ["code", "language"]
-      }
-    },
-    {
-      "name": "data_processor",
-      "description": "Process and analyze structured data",
-      "module": "tools.data_processor",
-      "enabled": false,
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "type": "array",
-            "description": "Data to process"
-          },
-          "operation": {
-            "type": "string",
-            "description": "Operation to perform",
-            "enum": ["summarize", "filter", "transform", "analyze"]
-          }
+        "action": {
+          "type": "string",
+          "description": "Specific action to perform"
         },
-        "required": ["data", "operation"]
-      }
-    },
-    {
-      "name": "file_reader",
-      "description": "Read and parse various file formats",
-      "module": "tools.file_reader",
-      "enabled": false,
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "file_path": {
-            "type": "string",
-            "description": "Path to the file"
-          },
-          "format": {
-            "type": "string",
-            "description": "File format",
-            "enum": ["json", "csv", "xml", "yaml", "text"]
-          }
-        },
-        "required": ["file_path"]
-      }
+        "payload": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Action-specific parameters"
+        }
+      },
+      "required": ["family", "action"]
     }
-  ],
-  "tool_categories": {
-    "computation": ["calculator"],
-    "information": ["web_search"],
-    "development": ["code_analyzer"],
-    "data": ["data_processor", "file_reader"]
   },
-  "security": {
-    "allowed_domains": [
-      "wikipedia.org",
-      "github.com",
-      "stackoverflow.com"
-    ],
-    "blocked_operations": [
-      "file_system_write",
-      "network_admin",
-      "system_exec"
-    ],
-    "sandbox_enabled": true
-  },
-  "rate_limits": {
-    "per_tool_per_minute": 30,
-    "expensive_tools": {
-      "web_search": 10,
-      "code_analyzer": 5
+  {
+    "name": "mcp_call",
+    "description": "Call an MCP tool exposed by the local MCP server",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "description": "Name of the MCP tool to call"
+        },
+        "args": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Arguments to pass to the MCP tool"
+        }
+      },
+      "required": ["tool"]
     }
   }
-}
+]
