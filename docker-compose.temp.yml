@@ -1,0 +1,304 @@
+version: '3.9'
+services:
+  00-pipelines-gateway:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/00-pipelines-gateway
+    restart: unless-stopped
+    env_file:
+      - .env                  # FIXED: was ../.env.example (path was wrong)
+      - .env.prod            # OpenRouter configuration
+    environment:
+      # OpenRouter API Configuration
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      - OPENROUTER_REFERER=${OPENROUTER_REFERER:-https://core3.openwebui.local/}
+      # Model Configuration
+      - MODEL_TOOLCALL=${MODEL_TOOLCALL:-deepseek/deepseek-chat}
+      - MODEL_VISION=${MODEL_VISION:-zhipuai/glm-4v-9b}
+      - MODEL_EXPLICIT=${MODEL_EXPLICIT:-venice/uncensored:free}
+      - MODEL_CODER=${MODEL_CODER:-qwen/qwen-2.5-coder-32b-instruct}
+      # n8n Integration
+      - N8N_BASE_URL=${N8N_BASE_URL:-http://192.168.50.145:5678}
+      - N8N_API_KEY=${N8N_API_KEY}
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
+      - N8N_MCP_ENDPOINT=${N8N_MCP_ENDPOINT}
+      # Local Fallback
+      - LLAMACPP_HOST=${LLAMACPP_HOST:-localhost}
+      - LLAMACPP_PORT=${LLAMACPP_PORT:-8080}
+      # Memory Service
+      - MEMORY_SERVICE_URL=http://192.168.50.15:8102
+      - MEMORY_ENABLED=${MEMORY_ENABLED:-true}
+      - MEMORY_TIMEOUT=${MEMORY_TIMEOUT:-10}
+      # Feature Flags
+      - ENABLE_OPENROUTER=${ENABLE_OPENROUTER:-true}
+      - ENABLE_LOCAL_FALLBACK=${ENABLE_LOCAL_FALLBACK:-true}
+      - ENABLE_TOOLS=${ENABLE_TOOLS:-true}
+    networks:
+      - owui
+    depends_on:              # ensure upstreams are healthy before gateway starts
+      policy:
+        condition: service_healthy
+      01-intent-router:
+        condition: service_healthy
+      02-memory-2-0:
+        condition: service_healthy
+      03-feeling-engine:
+        condition: service_healthy
+      14-telemetry-cache:
+        condition: service_healthy
+    # Optional: reach host services via host.docker.internal (e.g., host Ollama)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8088/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  01-intent-router:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/01-intent-router
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    depends_on:
+      policy:
+        condition: service_healthy
+      02-memory-2-0:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8101/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  02-memory-2-0:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/02-memory-2.0
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8102/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  03-feeling-engine:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/03-feeling-engine
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8103/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  04-hidden-multi-expert-merger:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/04-hidden-multi-expert-merger
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  05-drive-state:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/05-drive-state
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  06-byof-tool-hub:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/06-byof-tool-hub
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  07-tandoor-sidecar:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/07-tandoor-sidecar
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  08-openbb-sidecar:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/08-openbb-sidecar
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  09-proactive-daemon:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/09-proactive-daemon
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+    retries: 3
+
+  10-multimodal-router:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/10-multimodal-router
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    depends_on:
+      - 11-stt-tts-gateway
+      - 16-fastvlm-sidecar
+    # Optional: reach host services (e.g., host GPU services)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  11-stt-tts-gateway:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/11-stt-tts-gateway
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  12-avatar-overlay:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/12-avatar-overlay
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  policy:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/13-policy-guardrails
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "8001"                  # so other containers can reach it internally
+    networks:
+      owui:
+        aliases:
+          - policy               # <— Option A: network alias for POLICY_URL
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  14-telemetry-cache:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/14-telemetry-cache
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  16-fastvlm-sidecar:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/16-fastvlm-sidecar
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  openwebui-suite:
+    build:
+      context: /tmp/tmp79lwspxj/OpenWebUI_Suite-main/openwebui-suite
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      - owui
+    depends_on:
+      - 00-pipelines-gateway
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:XXXX/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  owui:
+    driver: bridge
+
+volumes: {}
+
