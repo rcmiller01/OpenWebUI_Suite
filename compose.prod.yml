@@ -5,7 +5,7 @@ services:
   gateway:
     build: { context: ./00-pipelines-gateway }
     restart: unless-stopped
-    env_file: [ .env ]
+    env_file: [ .env, .env.openrouter ]
     networks: [ owui ]
     depends_on:
       policy: { condition: service_started }
@@ -20,12 +20,31 @@ services:
     environment:
       - GATEWAY_DB=/data/gateway.db
       - ENABLE_PROJECTS=true
+      # OpenRouter Refactor Configuration
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - OPENROUTER_API_BASE=${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1/chat/completions}
-      - OPENROUTER_MODEL_DEFAULT=${OPENROUTER_MODEL_DEFAULT:-openai/gpt-4o-mini}
-      - OPENROUTER_TIMEOUT=${OPENROUTER_TIMEOUT:-60}
+      - OPENROUTER_GATEWAY_URL=http://gateway:8000
+      - OPENROUTER_GATEWAY_TIMEOUT=${OPENROUTER_GATEWAY_TIMEOUT:-60}
+      # Local Fallback Configuration
+      - LLAMACPP_HOST=${LLAMACPP_HOST:-localhost}
+      - LLAMACPP_PORT=${LLAMACPP_PORT:-8080}
+      - LLAMACPP_TIMEOUT=${LLAMACPP_TIMEOUT:-30}
+      # Tool Integration
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://192.168.50.145:5678/webhook/openrouter-router}
+      - MCP_ENDPOINT=${MCP_ENDPOINT:-http://core3:8765}
+      # Memory Service
+      - MEMORY_SERVICE_URL=http://memory:8002
+      # Service URLs
       - FEELING_URL=http://feeling:8103
       - INTENT_URL=http://intent:8101
+      # OpenRouter Models (New Refactor)
+      - MODEL_TOOLCALL=deepseek/deepseek-chat
+      - MODEL_VISION=zhipuai/glm-4v-9b
+      - MODEL_EXPLICIT=venice/uncensored:free
+      - MODEL_CODER=qwen/qwen-2.5-coder-32b-instruct
+      # Routing Configuration
+      - ENABLE_CONTENT_ANALYSIS=${ENABLE_CONTENT_ANALYSIS:-true}
+      - ENABLE_LOCAL_FALLBACK=${ENABLE_LOCAL_FALLBACK:-true}
+      - AUTO_MODEL_SELECTION=${AUTO_MODEL_SELECTION:-true}
     healthcheck:
       test: ["CMD-SHELL","curl -fsS http://localhost:8000/health || exit 1"]
       interval: 30s

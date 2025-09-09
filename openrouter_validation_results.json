@@ -1,0 +1,86 @@
+{
+  "total_tests": 16,
+  "passed_tests": 7,
+  "results": [
+    {
+      "test": "Configuration Constants",
+      "success": false,
+      "details": "No module named 'config'"
+    },
+    {
+      "test": "Model Presets",
+      "success": true,
+      "details": "4 presets loaded"
+    },
+    {
+      "test": "Tools Configuration",
+      "success": true,
+      "details": "2 tools configured"
+    },
+    {
+      "test": "OpenRouter Provider",
+      "success": true,
+      "details": "API Key: False, Models: 4"
+    },
+    {
+      "test": "Local Fallback Provider",
+      "success": true,
+      "details": "Available: False"
+    },
+    {
+      "test": "Routing Policy",
+      "success": false,
+      "details": "attempted relative import beyond top-level package"
+    },
+    {
+      "test": "Tools Health Check",
+      "success": true,
+      "details": "n8n: True, MCP: False"
+    },
+    {
+      "test": "Available Tools",
+      "success": true,
+      "details": "2 tools available"
+    },
+    {
+      "test": "Memory Service Health",
+      "success": true,
+      "details": "Available: False"
+    },
+    {
+      "test": "API Gateway",
+      "success": false,
+      "details": "attempted relative import beyond top-level package"
+    },
+    {
+      "test": "Environment: OpenRouter API Key",
+      "success": false,
+      "details": "OPENROUTER_API_KEY=not set"
+    },
+    {
+      "test": "Environment: Gateway URL",
+      "success": false,
+      "details": "OPENROUTER_GATEWAY_URL=not set"
+    },
+    {
+      "test": "Environment: Memory Service",
+      "success": false,
+      "details": "MEMORY_SERVICE_URL=not set"
+    },
+    {
+      "test": "Environment: n8n Webhook",
+      "success": false,
+      "details": "N8N_WEBHOOK_URL=not set"
+    },
+    {
+      "test": "Environment: MCP Endpoint",
+      "success": false,
+      "details": "MCP_ENDPOINT=not set"
+    },
+    {
+      "test": "Environment Configuration",
+      "success": false,
+      "details": "0/5 variables configured"
+    }
+  ]
+}

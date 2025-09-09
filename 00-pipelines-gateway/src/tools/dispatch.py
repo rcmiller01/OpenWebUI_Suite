@@ -6,15 +6,20 @@ Handles n8n workflow routing and MCP tool integration
 import json
 import httpx
 import logging
+import os
 from typing import Dict, Any, List, Optional
 import asyncio
 
 logger = logging.getLogger(__name__)
 
 # Tool endpoints from configuration
-N8N_WEBHOOK_URL = "http://192.168.50.145:5678/webhook/openrouter-router"
-MCP_ENDPOINT = "http://core3:8765"
-TIMEOUT_SECONDS = 30
+N8N_BASE_URL = os.getenv("N8N_BASE_URL", "http://192.168.50.145:5678")
+N8N_API_KEY = os.getenv("N8N_API_KEY", "")
+N8N_WEBHOOK_URL = os.getenv("N8N_WEBHOOK_URL", 
+                           "http://192.168.50.145:5678/webhook/openrouter-router")
+N8N_MCP_ENDPOINT = os.getenv("N8N_MCP_ENDPOINT", 
+                            "http://192.168.50.145:5678/webhook/mcp-tools")
+TIMEOUT_SECONDS = int(os.getenv("TOOLS_TIMEOUT", "30"))
 
 
 class ToolDispatcher:
@@ -95,7 +100,7 @@ class ToolDispatcher:
         
         try:
             response = await self.client.post(
-                f"{MCP_ENDPOINT}/call",
+                f"{N8N_MCP_ENDPOINT}/call",
                 json=payload,
                 headers={"Content-Type": "application/json"}
             )
@@ -243,7 +248,9 @@ class ToolDispatcher:
         
         # Check MCP endpoint
         try:
-            response = await self.client.get(f"{MCP_ENDPOINT}/health", timeout=5)
+            response = await self.client.get(
+                f"{N8N_MCP_ENDPOINT}/health", timeout=5
+            )
             health_status["mcp"]["available"] = response.status_code == 200
         except Exception as e:
             health_status["mcp"]["error"] = str(e)

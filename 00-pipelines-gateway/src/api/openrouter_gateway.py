@@ -12,7 +12,7 @@ from datetime import datetime
 
 from ..router.policy import get_router_policy
 from ..providers import openrouter, local_fallback
-from ..tools.dispatch import get_tool_dispatcher, dispatch_tool_calls
+from ..tools.dispatch import dispatch_tool_calls
 from ..memory.integration import store_conversation_async
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,8 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/chat/completions", response_model=ChatResponse)
-async def chat_completions(request: ChatRequest, background_tasks: BackgroundTasks):
+async def chat_completions(request: ChatRequest, 
+                          background_tasks: BackgroundTasks):
     """
     Main chat completions endpoint with OpenRouter-first routing
     """
@@ -55,7 +56,10 @@ async def chat_completions(request: ChatRequest, background_tasks: BackgroundTas
     conversation_id = request.conversation_id or f"conv-{uuid.uuid4().hex[:8]}"
     
     # Convert Pydantic models to dicts
-    messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
+    messages = [
+        {"role": msg.role, "content": msg.content} 
+        for msg in request.messages
+    ]
     
     try:
         # Get routing policy and determine provider/model
@@ -82,25 +86,35 @@ async def chat_completions(request: ChatRequest, background_tasks: BackgroundTas
         
         # Handle tool calls if present in response
         tool_calls = None
-        if request.tools and "tool_calls" in content:
+        tool_results = None
+        if (request.tools and isinstance(content, dict) and 
+            "tool_calls" in content):
             tool_calls = content.get("tool_calls", [])
             if tool_calls:
                 # Execute tool calls
-                async with get_tool_dispatcher() as dispatcher:
-                    tool_results = await dispatch_tool_calls(tool_calls)
-                    # Add tool results to response metadata
-                    content["tool_results"] = tool_results
+                tool_results = await dispatch_tool_calls(tool_calls)
         
         # Extract final content
-        final_content = content if isinstance(content, str) else content.get("content", str(content))
+        if isinstance(content, str):
+            final_content = content
+        elif isinstance(content, dict):
+            final_content = content.get("content", str(content))
+        else:
+            final_content = str(content)
         
-        # Create response
+        # Create response with proper usage tracking
+        usage = {
+            "prompt_tokens": 0, 
+            "completion_tokens": 0, 
+            "total_tokens": 0
+        }  # Placeholder
+        
         response = ChatResponse(
             id=response_id,
             model=model,
             provider=provider,
             content=final_content,
-            usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},  # Placeholder
+            usage=usage,
             conversation_id=conversation_id,
             tool_calls=tool_calls
         )
@@ -126,19 +140,27 @@ async def chat_completions(request: ChatRequest, background_tasks: BackgroundTas
         if fallback:
             fallback_provider, fallback_model = fallback
             try:
-                logger.info(f"Trying fallback: {fallback_provider} with {fallback_model}")
+                logger.info(
+                    f"Trying fallback: {fallback_provider} with {fallback_model}"
+                )
                 
                 if fallback_provider == "local_fallback":
                     content = await _execute_local_request(
                         messages, request.temperature, request.max_tokens
                     )
                     
+                    fallback_usage = {
+                        "prompt_tokens": 0, 
+                        "completion_tokens": 0, 
+                        "total_tokens": 0
+                    }
+                    
                     response = ChatResponse(
                         id=response_id,
                         model=fallback_model,
                         provider=fallback_provider,
                         content=content,
-                        usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                        usage=fallback_usage,
                         conversation_id=conversation_id
                     )
                     
@@ -148,7 +170,11 @@ async def chat_completions(request: ChatRequest, background_tasks: BackgroundTas
                         conversation_id,
                         messages + [{"role": "assistant", "content": content}],
                         f"{fallback_provider}:{fallback_model}",
-                        {"response_id": response_id, "fallback": True, "original_error": str(e)}
+                        {
+                            "response_id": response_id, 
+                            "fallback": True, 
+                            "original_error": str(e)
+                        }
                     )
                     
                     return response
@@ -156,14 +182,19 @@ async def chat_completions(request: ChatRequest, background_tasks: BackgroundTas
             except Exception as fallback_error:
                 logger.error(f"Fallback also failed: {fallback_error}")
         
-        raise HTTPException(status_code=500, detail=f"All providers failed: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"All providers failed: {e}"
+        )
 
 
-async def _execute_openrouter_request(messages: List[Dict[str, str]],
-                                     model: str,
-                                     temperature: float,
-                                     max_tokens: int,
-                                     tools: Optional[List[Dict[str, Any]]] = None) -> str:
+async def _execute_openrouter_request(
+    messages: List[Dict[str, str]],
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    tools: Optional[List[Dict[str, Any]]] = None
+) -> str:
     """Execute request using OpenRouter provider"""
     return openrouter.chat(
         messages=messages,
@@ -174,9 +205,11 @@ async def _execute_openrouter_request(messages: List[Dict[str, str]],
     )
 
 
-async def _execute_local_request(messages: List[Dict[str, str]],
-                                temperature: float,
-                                max_tokens: int) -> str:
+async def _execute_local_request(
+    messages: List[Dict[str, str]],
+    temperature: float,
+    max_tokens: int
+) -> str:
     """Execute request using local fallback provider"""
     return local_fallback.chat(
         messages=messages,
@@ -185,13 +218,17 @@ async def _execute_local_request(messages: List[Dict[str, str]],
     )
 
 
-async def _store_conversation_background(conversation_id: str,
-                                       messages: List[Dict[str, Any]],
-                                       model_used: str,
-                                       metadata: Dict[str, Any]):
+async def _store_conversation_background(
+    conversation_id: str,
+    messages: List[Dict[str, Any]],
+    model_used: str,
+    metadata: Dict[str, Any]
+):
     """Background task to store conversation in memory"""
     try:
-        await store_conversation_async(conversation_id, messages, model_used, metadata)
+        await store_conversation_async(
+            conversation_id, messages, model_used, metadata
+        )
     except Exception as e:
         logger.error(f"Failed to store conversation {conversation_id}: {e}")
 
@@ -206,8 +243,8 @@ async def health_check():
     local_health = local_fallback.check_health()
     
     # Check tools health
-    async with get_tool_dispatcher() as dispatcher:
-        tools_health = await dispatcher.health_check()
+    from ..tools.dispatch import check_tools_health
+    tools_health = await check_tools_health()
     
     return {
         "status": "healthy",

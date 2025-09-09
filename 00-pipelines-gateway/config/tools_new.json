@@ -1,0 +1,45 @@
+[
+  {
+    "name": "n8n_router",
+    "description": "Dispatch an action to local n8n workflow automation",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "family": {
+          "type": "string",
+          "enum": ["proxmox", "git", "deploy", "backup"],
+          "description": "Action family/category"
+        },
+        "action": {
+          "type": "string",
+          "description": "Specific action to perform"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Action-specific parameters"
+        }
+      },
+      "required": ["family", "action"]
+    }
+  },
+  {
+    "name": "mcp_call",
+    "description": "Call an MCP tool exposed by the local MCP server",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "type": "string",
+          "description": "Name of the MCP tool to call"
+        },
+        "args": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Arguments to pass to the MCP tool"
+        }
+      },
+      "required": ["tool"]
+    }
+  }
+]

@@ -6,6 +6,32 @@ services:
     restart: unless-stopped
     env_file:
       - .env                  # FIXED: was ../.env.example (path was wrong)
+      - .env.prod            # OpenRouter configuration
+    environment:
+      # OpenRouter API Configuration
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      - OPENROUTER_REFERER=${OPENROUTER_REFERER:-https://core3.openwebui.local/}
+      # Model Configuration
+      - MODEL_TOOLCALL=${MODEL_TOOLCALL:-deepseek/deepseek-chat}
+      - MODEL_VISION=${MODEL_VISION:-zhipuai/glm-4v-9b}
+      - MODEL_EXPLICIT=${MODEL_EXPLICIT:-venice/uncensored:free}
+      - MODEL_CODER=${MODEL_CODER:-qwen/qwen-2.5-coder-32b-instruct}
+      # n8n Integration
+      - N8N_BASE_URL=${N8N_BASE_URL:-http://192.168.50.145:5678}
+      - N8N_API_KEY=${N8N_API_KEY}
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL}
+      - N8N_MCP_ENDPOINT=${N8N_MCP_ENDPOINT}
+      # Local Fallback
+      - LLAMACPP_HOST=${LLAMACPP_HOST:-localhost}
+      - LLAMACPP_PORT=${LLAMACPP_PORT:-8080}
+      # Memory Service
+      - MEMORY_SERVICE_URL=http://02-memory-2-0:8002
+      - MEMORY_ENABLED=${MEMORY_ENABLED:-true}
+      # Feature Flags
+      - ENABLE_OPENROUTER=${ENABLE_OPENROUTER:-true}
+      - ENABLE_LOCAL_FALLBACK=${ENABLE_LOCAL_FALLBACK:-true}
+      - ENABLE_TOOLS=${ENABLE_TOOLS:-true}
     networks:
       - owui
     depends_on:              # ensure upstreams are available before gateway starts
@@ -18,9 +44,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import socket; exit(0)'"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
 
   01-intent-router:

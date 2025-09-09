@@ -1,0 +1,275 @@
+{
+  "name": "OpenRouter Main Workflow",
+  "description": "Handles OpenRouter workflow dispatches from the gateway",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "openrouter-router",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-openrouter",
+      "name": "OpenRouter Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse incoming OpenRouter workflow request\nconst family = $json.family || $json.workflow;\nconst action = $json.action;\nconst payload = $json.payload || $json.input_data || {};\n\n// Log the request\nconsole.log('OpenRouter Workflow:', family, action, payload);\n\n// Route based on family\nswitch(family) {\n  case 'proxmox':\n    return {\n      family: 'proxmox',\n      action: action,\n      payload: payload,\n      endpoint: 'http://192.168.50.10:8006/api2/json'\n    };\n  case 'git':\n    return {\n      family: 'git',\n      action: action,\n      payload: payload,\n      repo: payload.repo || 'OpenWebUI_Suite'\n    };\n  case 'deploy':\n    return {\n      family: 'deploy',\n      action: action,\n      payload: payload,\n      environment: payload.environment || 'dev'\n    };\n  case 'backup':\n    return {\n      family: 'backup',\n      action: action,\n      payload: payload,\n      target: payload.target || 'all'\n    };\n  default:\n    throw new Error(`Unknown workflow family: ${family}`);\n}"
+      },
+      "id": "workflow-router",
+      "name": "Workflow Router",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.family }}",
+              "rightValue": "proxmox",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.family }}",
+              "rightValue": "git",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.family }}",
+              "rightValue": "deploy",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.family }}",
+              "rightValue": "backup",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "family-switch",
+      "name": "Family Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [600, 400]
+    },
+    {
+      "parameters": {
+        "command": "cd /data/repos/{{ $json.repo }} && git pull && docker compose restart",
+        "workingDirectory": "/data/repos"
+      },
+      "id": "git-deploy",
+      "name": "Git Deploy",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.endpoint }}/nodes",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "proxmoxApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "PVEAPIToken=root@pam!monitoring:your-token-here"
+            }
+          ]
+        }
+      },
+      "id": "proxmox-action",
+      "name": "Proxmox Action",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [800, 200]
+    },
+    {
+      "parameters": {
+        "command": "docker compose -f /data/compose/{{ $json.environment }}.yml up -d",
+        "workingDirectory": "/data/deployments"
+      },
+      "id": "deploy-action",
+      "name": "Deploy Action",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [800, 500]
+    },
+    {
+      "parameters": {
+        "command": "tar -czf /data/backups/backup-$(date +%Y%m%d-%H%M%S).tar.gz {{ $json.target }}",
+        "workingDirectory": "/data"
+      },
+      "id": "backup-action",
+      "name": "Backup Action",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [800, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format workflow response\nconst result = $json;\nconst originalRequest = $('Workflow Router').item.json;\n\nreturn {\n  success: true,\n  workflow: originalRequest.family,\n  action: originalRequest.action,\n  result: result,\n  timestamp: new Date().toISOString(),\n  source: 'openrouter-gateway'\n};"
+      },
+      "id": "format-workflow-response",
+      "name": "Format Workflow Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "workflow-response",
+      "name": "Workflow Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1200, 400]
+    }
+  ],
+  "connections": {
+    "OpenRouter Webhook": {
+      "main": [
+        [
+          {
+            "node": "Workflow Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Router": {
+      "main": [
+        [
+          {
+            "node": "Family Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Family Switch": {
+      "main": [
+        [
+          {
+            "node": "Proxmox Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Git Deploy",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Deploy Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Backup Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Git Deploy": {
+      "main": [
+        [
+          {
+            "node": "Format Workflow Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Proxmox Action": {
+      "main": [
+        [
+          {
+            "node": "Format Workflow Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deploy Action": {
+      "main": [
+        [
+          {
+            "node": "Format Workflow Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backup Action": {
+      "main": [
+        [
+          {
+            "node": "Format Workflow Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Workflow Response": {
+      "main": [
+        [
+          {
+            "node": "Workflow Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": ["openrouter", "workflow", "automation"],
+  "triggerCount": 1,
+  "updatedAt": "2025-09-08T00:00:00.000Z",
+  "versionId": "1"
+}

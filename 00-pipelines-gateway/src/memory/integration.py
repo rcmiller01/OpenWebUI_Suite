@@ -5,15 +5,17 @@ Provides enhanced memory storage and retrieval for conversations
 """
 import httpx
 import logging
+import os
 from typing import Dict, Any, List, Optional
-import json
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 # Memory service endpoint
-MEMORY_SERVICE_URL = "http://02-memory-2.0:8002"
-TIMEOUT_SECONDS = 10
+MEMORY_SERVICE_URL = os.getenv("MEMORY_SERVICE_URL", 
+                              "http://02-memory-2.0:8002")
+MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "true").lower() == "true"
+TIMEOUT_SECONDS = int(os.getenv("MEMORY_TIMEOUT", "10"))
 
 
 class MemoryIntegration:
