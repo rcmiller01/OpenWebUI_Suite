@@ -1,0 +1,160 @@
+{
+  "name": "OpenRouter Router",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "openrouter-router",
+        "responseMode": "responseNode",
+        "options": {
+          "responseData": "={{$json}}",
+          "binaryData": false,
+          "responseCode": 200,
+          "headerParametersUi": {
+            "parameter": [
+              {
+                "name": "{{$env.N8N_SHARED_HEADER || 'X-N8N-Key'}}",
+                "value": "={{$env.N8N_SHARED_SECRET || ''}}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "Webhook_Entry",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "propertyName": "family",
+        "dataType": "string",
+        "rules": {
+          "values": [
+            { "value1": "proxmox", "operation": "equal" },
+            { "value1": "git",     "operation": "equal" },
+            { "value1": "deploy",  "operation": "equal" },
+            { "value1": "backup",  "operation": "equal" },
+            { "value1": "image",   "operation": "equal" }
+          ]
+        }
+      },
+      "id": "Switch_Family",
+      "name": "Switch family",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://proxmox.home:8006/api2/json/{{$json.action}}",
+        "options": {
+          "headersUi": {
+            "parameter": [
+              { "name": "Authorization", "value": "PVEAPIToken={{$env.PVE_TOKEN_ID}}={{$env.PVE_TOKEN_SECRET}}" }
+            ]
+          },
+          "bodyParametersUi": { "parameter": [] }
+        }
+      },
+      "id": "HTTP_Proxmox",
+      "name": "Proxmox HTTP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 140]
+    },
+    {
+      "parameters": {
+        "command": "bash",
+        "input": "={{$json.action}}",
+        "shell": "bash"
+      },
+      "id": "Exec_Git",
+      "name": "Git Exec (host agent)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 2,
+      "position": [700, 240]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8088/deploy",
+        "options": {
+          "bodyParametersUi": {
+            "parameter": [
+              { "name": "tag", "value": "={{$json.payload.tag || 'prod'}}" }
+            ]
+          },
+          "method": "POST"
+        }
+      },
+      "id": "HTTP_Deploy",
+      "name": "Gateway Deploy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 340]
+    },
+    {
+      "parameters": {
+        "url": "http://backupbox.local:9000/run",
+        "options": {
+          "method": "POST",
+          "bodyParametersUi": {
+            "parameter": [
+              { "name": "job", "value": "={{$json.payload.job || 'full'}}" }
+            ]
+          }
+        }
+      },
+      "id": "HTTP_Backup",
+      "name": "Backup Trigger",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 440]
+    },
+    {
+      "parameters": {
+        "url": "http://127.0.0.1:5678/webhook/a1111-txt2img",
+        "options": {
+          "method": "POST",
+          "jsonParameters": true,
+          "bodyParametersJson": "={{$json.payload}}"
+        }
+      },
+      "id": "HTTP_Image",
+      "name": "Image (A1111 via local webhook)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 540]
+    },
+    {
+      "parameters": {
+        "responseBody": "={{$json}}",
+        "responseCode": 200
+      },
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [950, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Switch family", "type": "main", "index": 0 }]] },
+    "Switch family": {
+      "main": [
+        [{ "node": "Proxmox HTTP", "type": "main", "index": 0 }],
+        [{ "node": "Git Exec (host agent)", "type": "main", "index": 0 }],
+        [{ "node": "Gateway Deploy", "type": "main", "index": 0 }],
+        [{ "node": "Backup Trigger", "type": "main", "index": 0 }],
+        [{ "node": "Image (A1111 via local webhook)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Proxmox HTTP": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Git Exec (host agent)": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Gateway Deploy": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Backup Trigger": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Image (A1111 via local webhook)": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}

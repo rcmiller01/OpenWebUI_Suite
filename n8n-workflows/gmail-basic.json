@@ -1,0 +1,40 @@
+{
+  "name": "Gmail Basic",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "gmail-list",
+        "responseMode": "responseNode",
+        "options": {
+          "responseData": "={{$json}}",
+          "headerParametersUi": { "parameter": [{ "name": "{{$env.N8N_SHARED_HEADER || 'X-N8N-Key'}}", "value": "={{$env.N8N_SHARED_SECRET || ''}}" }] }
+        }
+      },
+      "id": "Webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "query": "label:UNREAD newer_than:7d",
+        "returnAll": true
+      },
+      "id": "Gmail",
+      "name": "Gmail (Unread 7d)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 3,
+      "position": [520, 300],
+      "credentials": { "gmailOAuth2": "Gmail OAuth" }
+    },
+    { "parameters": { "responseBody": "={{$json}}", "responseCode": 200 }, "id": "Respond", "name": "Respond", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [820, 300] }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Gmail (Unread 7d)", "type": "main", "index": 0 }]] },
+    "Gmail (Unread 7d)": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}

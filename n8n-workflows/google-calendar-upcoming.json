@@ -1,0 +1,42 @@
+{
+  "name": "Google Calendar Upcoming",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "gcal-upcoming",
+        "responseMode": "responseNode",
+        "options": {
+          "responseData": "={{$json}}",
+          "headerParametersUi": { "parameter": [{ "name": "{{$env.N8N_SHARED_HEADER || 'X-N8N-Key'}}", "value": "={{$env.N8N_SHARED_SECRET || ''}}" }] }
+        }
+      },
+      "id": "Webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": "primary",
+        "returnAll": false,
+        "limit": 10,
+        "options": { "timeMin": "={{new Date().toISOString()}}" }
+      },
+      "id": "GCal",
+      "name": "Google Calendar (Next 10)",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 3,
+      "position": [520, 300],
+      "credentials": { "googleCalendarOAuth2Api": "Google Calendar OAuth" }
+    },
+    { "parameters": { "responseBody": "={{$json}}", "responseCode": 200 }, "id": "Respond", "name": "Respond", "type": "n8n-nodes-base.respondToWebhook", "typeVersion": 1, "position": [820, 300] }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Google Calendar (Next 10)", "type": "main", "index": 0 }]] },
+    "Google Calendar (Next 10)": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}

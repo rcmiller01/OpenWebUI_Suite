@@ -1,0 +1,57 @@
+{
+  "name": "Metrics Heartbeat",
+  "active": true,
+  "nodes": [
+    { "parameters": { "triggerTimes": { "item": [{ "mode": "everyMinute" }] } }, "id": "Cron", "name": "Cron", "type": "n8n-nodes-base.cron", "typeVersion": 1, "position": [200, 300] },
+    {
+      "parameters": {
+        "functionCode": "const ports = [8088,8101,8103,8104,8105,8106,8107,8108,8110,8111,8112,8113,8114,8115];\nreturn ports.map(p=>({port:p,url:`http://localhost:${p}/healthz`}));"
+      },
+      "id": "ListTargets",
+      "name": "List Targets",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [420, 300]
+    },
+    {
+      "parameters": { "url": "={{$json.url}}", "options": { "method": "GET" } },
+      "id": "HTTPCheck",
+      "name": "HTTP Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const ok = $json.statusCode && $json.statusCode>=200 && $json.statusCode<300;\nconst port = $json.item?.port || $json.port || 'unknown';\nreturn [{ metric:`owui_service_healthy{port=\"${port}\"} ${ok?1:0}` }];"
+      },
+      "id": "ToMetric",
+      "name": "To Metric Line",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{($env.PUSHGATEWAY || '').trim() || 'skip'}}/metrics/job/owui",
+        "options": {
+          "method": "POST",
+          "bodyContentType": "raw",
+          "body": "={{$items().map(i=>i.json.metric).join('\\n')}}"
+        }
+      },
+      "id": "Pushgateway",
+      "name": "Prom Pushgateway (optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1080, 300],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Cron": { "main": [[{ "node": "List Targets", "type": "main", "index": 0 }]] },
+    "List Targets": { "main": [[{ "node": "HTTP Check", "type": "main", "index": 0 }]] },
+    "HTTP Check": { "main": [[{ "node": "To Metric Line", "type": "main", "index": 0 }]] },
+    "To Metric Line": { "main": [[{ "node": "Prom Pushgateway (optional)", "type": "main", "index": 0 }]] }
+  }
+}

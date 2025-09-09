@@ -1,0 +1,59 @@
+{
+  "name": "MCP Tools Proxy",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mcp-tools",
+        "responseMode": "responseNode",
+        "options": {
+          "responseData": "={{$json}}",
+          "headerParametersUi": {
+            "parameter": [
+              {
+                "name": "{{$env.N8N_SHARED_HEADER || 'X-N8N-Key'}}",
+                "value": "={{$env.N8N_SHARED_SECRET || ''}}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "Webhook_Entry",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.MCP_ENDPOINT || 'http://127.0.0.1:3001/exec'}}",
+        "options": {
+          "method": "POST",
+          "jsonParameters": true,
+          "bodyParametersJson": "{\n  \"tool\": \"{{$json.tool}}\",\n  \"args\": {{$json.args || {}}}\n}"
+        }
+      },
+      "id": "HTTP_MCP",
+      "name": "MCP HTTP Bridge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "responseBody": "={{$json}}",
+        "responseCode": 200
+      },
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [800, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "MCP HTTP Bridge", "type": "main", "index": 0 }]] },
+    "MCP HTTP Bridge": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}

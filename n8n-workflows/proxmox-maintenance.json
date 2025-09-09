@@ -1,0 +1,216 @@
+{
+  "action": "create_lxc|delete_lxc|start|stop|reboot|shutdown|snapshot|config",
+  "ctid": 123,
+  "node": "pve1",
+  "payload": { "vmid": 123, "hostname": "myct", "cores": 2, "...": "..." }
+}
+{
+  "name": "Proxmox Maintenance",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "proxmox-maint",
+        "responseMode": "responseNode",
+        "options": {
+          "responseData": "={{$json}}",
+          "headerParametersUi": {
+            "parameter": [
+              { "name": "{{$env.N8N_SHARED_HEADER || 'X-N8N-Key'}}", "value": "={{$env.N8N_SHARED_SECRET || ''}}" }
+            ]
+          }
+        }
+      },
+      "id": "Webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "propertyName": "action",
+        "dataType": "string",
+        "rules": {
+          "values": [
+            { "value1": "create_lxc", "operation": "equal" },
+            { "value1": "delete_lxc", "operation": "equal" },
+            { "value1": "start", "operation": "equal" },
+            { "value1": "stop", "operation": "equal" },
+            { "value1": "reboot", "operation": "equal" },
+            { "value1": "shutdown", "operation": "equal" },
+            { "value1": "snapshot", "operation": "equal" },
+            { "value1": "config", "operation": "equal" }
+          ]
+        }
+      },
+      "id": "Switch",
+      "name": "Switch action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://${$env.PVE_HOST}:8006/api2/json/nodes/${$json.node || $env.PVE_NODE}/lxc`}}",
+        "options": {
+          "method": "POST",
+          "jsonParameters": true,
+          "bodyParametersJson": "={{$json.payload || {}}}",
+          "headersUi": {
+            "parameter": [
+              { "name": "Authorization", "value": "PVEAPIToken={{$env.PVE_TOKEN_ID}}={{$env.PVE_TOKEN_SECRET}}" }
+            ]
+          },
+          "ignoreSslIssues": true
+        }
+      },
+      "id": "CreateLXC",
+      "name": "Create LXC",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 60]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://${$env.PVE_HOST}:8006/api2/json/nodes/${$json.node || $env.PVE_NODE}/lxc/${$json.ctid}`}}",
+        "options": {
+          "method": "DELETE",
+          "headersUi": { "parameter": [{ "name": "Authorization", "value": "PVEAPIToken={{$env.PVE_TOKEN_ID}}={{$env.PVE_TOKEN_SECRET}}" }] },
+          "ignoreSslIssues": true
+        }
+      },
+      "id": "DeleteLXC",
+      "name": "Delete LXC",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 140]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://${$env.PVE_HOST}:8006/api2/json/nodes/${$json.node || $env.PVE_NODE}/lxc/${$json.ctid}/status/start`}}",
+        "options": {
+          "method": "POST",
+          "headersUi": { "parameter": [{ "name": "Authorization", "value": "PVEAPIToken={{$env.PVE_TOKEN_ID}}={{$env.PVE_TOKEN_SECRET}}" }] },
+          "ignoreSslIssues": true
+        }
+      },
+      "id": "Start",
+      "name": "Start",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 220]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://${$env.PVE_HOST}:8006/api2/json/nodes/${$json.node || $env.PVE_NODE}/lxc/${$json.ctid}/status/stop`}}",
+        "options": {
+          "method": "POST",
+          "headersUi": { "parameter": [{ "name": "Authorization", "value": "PVEAPIToken={{$env.PVE_TOKEN_ID}}={{$env.PVE_TOKEN_SECRET}}" }] },
+          "ignoreSslIssues": true
+        }
+      },
+      "id": "Stop",
+      "name": "Stop",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://${$env.PVE_HOST}:8006/api2/json/nodes/${$json.node || $env.PVE_NODE}/lxc/${$json.ctid}/status/reboot`}}",
+        "options": {
+          "method": "POST",
+          "headersUi": { "parameter": [{ "name": "Authorization", "value": "PVEAPIToken={{$env.PVE_TOKEN_ID}}={{$env.PVE_TOKEN_SECRET}}" }] },
+          "ignoreSslIssues": true
+        }
+      },
+      "id": "Reboot",
+      "name": "Reboot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 380]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://${$env.PVE_HOST}:8006/api2/json/nodes/${$json.node || $env.PVE_NODE}/lxc/${$json.ctid}/status/shutdown`}}",
+        "options": {
+          "method": "POST",
+          "headersUi": { "parameter": [{ "name": "Authorization", "value": "PVEAPIToken={{$env.PVE_TOKEN_ID}}={{$env.PVE_TOKEN_SECRET}}" }] },
+          "ignoreSslIssues": true
+        }
+      },
+      "id": "Shutdown",
+      "name": "Shutdown",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 460]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://${$env.PVE_HOST}:8006/api2/json/nodes/${$json.node || $env.PVE_NODE}/lxc/${$json.ctid}/snapshot`}}",
+        "options": {
+          "method": "POST",
+          "jsonParameters": true,
+          "bodyParametersJson": "={{$json.payload || {\"snapname\":\"autosnap\",\"description\":\"n8n\"}}}",
+          "headersUi": { "parameter": [{ "name": "Authorization", "value": "PVEAPIToken={{$env.PVE_TOKEN_ID}}={{$env.PVE_TOKEN_SECRET}}" }] },
+          "ignoreSslIssues": true
+        }
+      },
+      "id": "Snapshot",
+      "name": "Snapshot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 540]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://${$env.PVE_HOST}:8006/api2/json/nodes/${$json.node || $env.PVE_NODE}/lxc/${$json.ctid}/config`}}",
+        "options": {
+          "method": "PUT",
+          "jsonParameters": true,
+          "bodyParametersJson": "={{$json.payload || {}}}",
+          "headersUi": { "parameter": [{ "name": "Authorization", "value": "PVEAPIToken={{$env.PVE_TOKEN_ID}}={{$env.PVE_TOKEN_SECRET}}" }] },
+          "ignoreSslIssues": true
+        }
+      },
+      "id": "Config",
+      "name": "Update Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 620]
+    },
+    {
+      "parameters": { "responseBody": "={{$json}}", "responseCode": 200 },
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [980, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Switch action", "type": "main", "index": 0 }]] },
+    "Switch action": {
+      "main": [
+        [{ "node": "Create LXC", "type": "main", "index": 0 }],
+        [{ "node": "Delete LXC", "type": "main", "index": 0 }],
+        [{ "node": "Start", "type": "main", "index": 0 }],
+        [{ "node": "Stop", "type": "main", "index": 0 }],
+        [{ "node": "Reboot", "type": "main", "index": 0 }],
+        [{ "node": "Shutdown", "type": "main", "index": 0 }],
+        [{ "node": "Snapshot", "type": "main", "index": 0 }],
+        [{ "node": "Update Config", "type": "main", "index": 0 }]
+      ]
+    },
+    "Create LXC": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Delete LXC": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Start": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Stop": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Reboot": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Shutdown": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Snapshot": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "Update Config": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}

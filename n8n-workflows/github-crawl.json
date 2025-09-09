@@ -1,0 +1,113 @@
+{
+  "name": "GitHub Crawl",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-crawl",
+        "responseMode": "responseNode",
+        "options": {
+          "responseData": "={{$json}}",
+          "headerParametersUi": { "parameter": [{ "name": "{{$env.N8N_SHARED_HEADER || 'X-N8N-Key'}}", "value": "={{$env.N8N_SHARED_SECRET || ''}}" }] }
+        }
+      },
+      "id": "Webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const owner=$json.owner; const repo=$json.repo; const branch=$json.branch||'main'; if(!owner||!repo) throw new Error('owner/repo required'); return [{owner,repo,branch}];"
+      },
+      "id": "Prep",
+      "name": "Prep",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://api.github.com/repos/${$json.owner}/${$json.repo}/git/refs/heads/${$json.branch}`}}",
+        "options": { "method": "GET", "headersUi": { "parameter": [{ "name": "User-Agent", "value": "n8n" }, { "name": "Authorization", "value": "token {{$env.GITHUB_TOKEN || ''}}" }] } }
+      },
+      "id": "GetRef",
+      "name": "Get Branch Ref",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "const sha=$json.object?.sha||$json.sha; if(!sha) throw new Error('no SHA'); return [{sha}]"
+      },
+      "id": "ToSHA",
+      "name": "Extract SHA",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [920, 200]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://api.github.com/repos/${$json.owner}/${$json.repo}/git/trees/${$json.sha}?recursive=1`}}",
+        "options": { "method": "GET", "headersUi": { "parameter": [{ "name": "User-Agent", "value": "n8n" }, { "name": "Authorization", "value": "token {{$env.GITHUB_TOKEN || ''}}" }] } }
+      },
+      "id": "Tree",
+      "name": "Get Tree (recursive)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1140, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "const files = ($json.tree||[]).filter(t=>t.type==='blob' && t.path.length<150 && (t.size||0) < 200000);\nreturn files.map(f=>({ path:f.path, sha:f.sha }));"
+      },
+      "id": "ListBlobs",
+      "name": "Filter Small Blobs",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1360, 200]
+    },
+    {
+      "parameters": {
+        "url": "={{`https://api.github.com/repos/${$json.owner}/${$json.repo}/git/blobs/${$json.sha}`}}",
+        "options": { "method": "GET", "headersUi": { "parameter": [{ "name": "User-Agent", "value": "n8n" }, { "name": "Authorization", "value": "token {{$env.GITHUB_TOKEN || ''}}" }, { "name": "Accept", "value": "application/vnd.github.v3+json" }] } }
+      },
+      "id": "GetBlob",
+      "name": "Get Blob (base64)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1580, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "const b = $json.content || ''; const content = Buffer.from(b.replace(/\\n/g,''), 'base64').toString('utf8'); return [{ path:$json.item.path, content }];"
+      },
+      "id": "Decode",
+      "name": "Base64 → Text",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1800, 200]
+    },
+    {
+      "parameters": { "responseBody": "={{$items().map(i=>({path:i.json.path, size:(i.json.content||'').length}))}}", "responseCode": 200 },
+      "id": "Respond",
+      "name": "Respond (summary)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2020, 200]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Prep", "type": "main", "index": 0 }]] },
+    "Prep": { "main": [[{ "node": "Get Branch Ref", "type": "main", "index": 0 }]] },
+    "Get Branch Ref": { "main": [[{ "node": "Extract SHA", "type": "main", "index": 0 }]] },
+    "Extract SHA": { "main": [[{ "node": "Get Tree (recursive)", "type": "main", "index": 0 }]] },
+    "Get Tree (recursive)": { "main": [[{ "node": "Filter Small Blobs", "type": "main", "index": 0 }]] },
+    "Filter Small Blobs": { "main": [[{ "node": "Get Blob (base64)", "type": "main", "index": 0 }]] },
+    "Get Blob (base64)": { "main": [[{ "node": "Base64 → Text", "type": "main", "index": 0 }]] },
+    "Base64 → Text": { "main": [[{ "node": "Respond (summary)", "type": "main", "index": 0 }]] }
+  }
+}

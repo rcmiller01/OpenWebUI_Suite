@@ -1,0 +1,59 @@
+{
+  "name": "A1111 txt2img",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "a1111-txt2img",
+        "responseMode": "responseNode",
+        "options": {
+          "responseData": "={{$json}}",
+          "headerParametersUi": {
+            "parameter": [
+              {
+                "name": "{{$env.N8N_SHARED_HEADER || 'X-N8N-Key'}}",
+                "value": "={{$env.N8N_SHARED_SECRET || ''}}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "Webhook_Entry",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.A1111_BASE || 'http://127.0.0.1:7860'}}/sdapi/v1/txt2img",
+        "options": {
+          "method": "POST",
+          "jsonParameters": true,
+          "bodyParametersJson": "{\n  \"prompt\": \"{{$json.prompt}}\",\n  \"negative_prompt\": \"{{$json.negative_prompt || ''}}\",\n  \"steps\": {{$json.steps || 28}},\n  \"sampler_name\": \"{{$json.sampler || 'Euler a'}}\",\n  \"seed\": {{$json.seed ?? -1}},\n  \"cfg_scale\": {{$json.cfg_scale || 7}},\n  \"width\": {{$json.width || 768}},\n  \"height\": {{$json.height || 768}},\n  \"enable_hr\": {{$json.enable_hr || false}},\n  \"hr_scale\": {{$json.hr_scale || 2}},\n  \"hr_upscaler\": \"{{$json.hr_upscaler || 'R-ESRGAN 4x+'}}\"\n}"
+        }
+      },
+      "id": "HTTP_A1111",
+      "name": "A1111 txt2img",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "responseBody": "={{$json}}",
+        "responseCode": 200
+      },
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [820, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "A1111 txt2img", "type": "main", "index": 0 }]] },
+    "A1111 txt2img": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}

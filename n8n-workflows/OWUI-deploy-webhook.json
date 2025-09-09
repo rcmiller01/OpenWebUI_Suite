@@ -1,0 +1,88 @@
+{
+  "name": "OWUI Deploy Webhook",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "owui-deploy",
+        "responseMode": "responseNode",
+        "options": {
+          "responseData": "={{$json}}",
+          "headerParametersUi": {
+            "parameter": [
+              { "name": "{{$env.N8N_SHARED_HEADER || 'X-N8N-Key'}}", "value": "={{$env.N8N_SHARED_SECRET || ''}}" }
+            ]
+          }
+        }
+      },
+      "id": "Webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const tag = $json.tag || 'prod';\nconst multi = ($json.multi_arch ?? true) ? '--multi-arch' : '';\nreturn [{ tag, multi }];"
+      },
+      "id": "Prep",
+      "name": "Prep (tag/multi)",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "command": "bash",
+        "input": "set -euo pipefail\ncd ~/openwebui-suite\npython3 scripts/build_all.py --all --tag {{$json.tag}} --push {{$json.multi}}\n"
+      },
+      "id": "LocalExec",
+      "name": "Local Execute (fallback)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 2,
+      "position": [840, 230]
+    },
+    {
+      "parameters": {
+        "command": "cd ~/openwebui-suite && python3 scripts/build_all.py --all --tag {{$json.tag}} --push {{$json.multi}}",
+        "cwd": "/home/{{$env.OWUI_USER || 'root'}}/openwebui-suite"
+      },
+      "id": "SSHExec",
+      "name": "SSH Execute (OWUI host)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [840, 380],
+      "credentials": { "sshAuthentication": "OWUI-SSH" },
+      "continueOnFail": true
+    },
+    {
+      "parameters": { "conditions": { "boolean": [], "number": [], "string": [{ "value1": "={{$credentials.exists('sshAuthentication', 'OWUI-SSH') ? 'yes' : 'no'}}", "operation": "equal", "value2": "yes" }] } },
+      "id": "IfSSH",
+      "name": "If SSH Creds?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": { "responseBody": "={{$json}}", "responseCode": 200 },
+      "id": "Respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1080, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Prep (tag/multi)", "type": "main", "index": 0 }]] },
+    "Prep (tag/multi)": { "main": [[{ "node": "If SSH Creds?", "type": "main", "index": 0 }]] },
+    "If SSH Creds?": {
+      "main": [
+        [{ "node": "SSH Execute (OWUI host)", "type": "main", "index": 0 }],
+        [{ "node": "Local Execute (fallback)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Local Execute (fallback)": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] },
+    "SSH Execute (OWUI host)": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}
