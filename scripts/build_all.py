@@ -3,7 +3,7 @@
 Unified builder/deployer for the OpenWebUI+OpenRouter stack.
 
 Usage examples:
-  # Full run: update → deps → config → tests → build base & services → deploy → sanity
+  # Full run: update → deps → config → tests → build base & services → deploy → integration → sanity
   python scripts/build_all.py --all --tag prod-2025-09 --push --multi-arch
 
   # Only build images (your original flow), local arch only:
@@ -11,6 +11,9 @@ Usage examples:
 
   # Just config + deploy (no rebuild):
   python scripts/build_all.py --config --deploy
+
+Flags affecting integration test behavior:
+  --ignore-test-fail   # do NOT fail the script if integration test returns non-zero
 """
 
 from __future__ import annotations
@@ -29,11 +32,11 @@ from datetime import datetime
 # Project constants
 # ──────────────────────────────────────────────────────────────────────────────
 
-REPO_ROOT   = Path(__file__).resolve().parent.parent
-ENV_FILE    = REPO_ROOT / ".env"
-CONFIG_DIR  = REPO_ROOT / "config"
-PRESETS_FILE= CONFIG_DIR / "presets.json"
-TOOLS_FILE  = CONFIG_DIR / "tools.json"
+REPO_ROOT    = Path(__file__).resolve().parent.parent
+ENV_FILE     = REPO_ROOT / ".env"
+CONFIG_DIR   = REPO_ROOT / "config"
+PRESETS_FILE = CONFIG_DIR / "presets.json"
+TOOLS_FILE   = CONFIG_DIR / "tools.json"
 
 # Your original service build order (kept verbatim)
 SERVICES = [
@@ -66,6 +69,9 @@ OPTIONAL_ENVS = [
     "N8N_SHARED_HEADER",
     "N8N_SHARED_SECRET",
     "MCP_ENDPOINT",
+    # Integration test can rely on this if your test script reads it,
+    # but the test_openrouter_complete.py already hardcodes the Memory URL.
+    "MEMORY_SERVICE_URL",
 ]
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -224,7 +230,7 @@ def ensure_config_files(dry=False):
 
 def run_tests(dry=False):
     # Python
-    if (REPO_ROOT / "pytest.ini").exists() or (REPO_ROOT / "tests").glob("*.py"):
+    if (REPO_ROOT / "pytest.ini").exists() or any((REPO_ROOT / "tests").glob("*.py")):
         py = shutil.which("python3") or sys.executable
         run(f"{py} -m pytest -q", dry=dry, check=False)
     # JS
@@ -246,7 +252,7 @@ def detect_runtime():
             dc_file = REPO_ROOT / name; break
     return unit, dc_file
 
-def deploy(dry=False):
+def deploy(dry=False, ignore_test_fail=False):
     unit, dc_file = detect_runtime()
     if unit:
         print(f"• systemd unit detected: {unit}")
@@ -261,55 +267,69 @@ def deploy(dry=False):
     else:
         print("‼ No systemd unit or docker compose file found; skipping deploy.")
 
+    # 🔥 New: integration test after services are up
+    test_file = REPO_ROOT / "test_openrouter_complete.py"
+    if test_file.exists():
+        print("\n⏳ Running integration tests (including Memory service)…")
+        py = shutil.which("python3") or sys.executable
+        try:
+            # Use check=True unless ignore_test_fail is set
+            run(f"{py} {test_file}", dry=dry, check=not ignore_test_fail)
+        except Exception as e:
+            msg = f"⚠ Integration test failed: {e}"
+            if ignore_test_fail:
+                print(msg)
+            else:
+                raise
+    else:
+        print("ℹ Skipping integration test (test_openrouter_complete.py not found).")
+
 def deploy_memory_service(remote_host="192.168.50.15", dry=False):
     """Deploy Memory 2.0 service to remote Docker host"""
     print(f"🧠 Deploying Memory 2.0 service to {remote_host}...")
-    
     memory_dir = REPO_ROOT / "02-memory-2.0"
     if not memory_dir.exists():
         print(f"❌ Memory service directory not found: {memory_dir}")
         return False
-    
-    # Create temp deployment package
-    import tempfile
-    import tarfile
-    
+
+    import tempfile, tarfile
+
     with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp:
         with tarfile.open(tmp.name, 'w:gz') as tar:
             tar.add(memory_dir, arcname='memory-service')
-        
-        # Copy to remote host (assumes SSH access)
+
         scp_cmd = f"scp {tmp.name} root@{remote_host}:/tmp/memory-service.tar.gz"
         run(scp_cmd, dry=dry)
-        
-        # Deploy on remote host
-        deploy_script = """
-            cd /tmp &&
-            tar -xzf memory-service.tar.gz &&
-            cd memory-service &&
-            docker build -t owui/memory-2.0:latest . &&
-            docker stop memory-service 2>/dev/null || true &&
-            docker rm memory-service 2>/dev/null || true &&
-            docker run -d --name memory-service --restart unless-stopped \\
-                -p 8102:8102 owui/memory-2.0:latest &&
-            sleep 5 &&
-            curl -f http://localhost:8102/healthz || echo "Health check failed"
+
+        deploy_script = r"""
+            set -e
+            cd /tmp
+            tar -xzf memory-service.tar.gz
+            cd memory-service
+            docker build -t owui/memory-2.0:latest .
+            docker stop memory-service 2>/dev/null || true
+            docker rm memory-service 2>/dev/null || true
+            docker run -d --name memory-service --restart unless-stopped \
+                -p 8102:8102 owui/memory-2.0:latest
+            sleep 5
+            curl -f http://localhost:8102/healthz || (echo 'Health check failed' && exit 1)
         """
-        
         ssh_cmd = f"ssh root@{remote_host} '{deploy_script}'"
         run(ssh_cmd, dry=dry)
-        
-        # Cleanup
-        import os
-        os.unlink(tmp.name)
-    
+
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+
     print(f"✅ Memory service deployed to http://{remote_host}:8102")
     return True
 
-
 def sanity_checks(dry=False):
+    # OpenRouter key presence (unless local fallback)
     if not os.environ.get("OPENROUTER_API_KEY"):
         print("⚠ OPENROUTER_API_KEY not set; remote routing may fail.")
+    # n8n reachability (optional)
     url = os.environ.get("N8N_WEBHOOK_URL")
     if url:
         hdr = os.environ.get("N8N_SHARED_HEADER", "X-N8N-Key")
@@ -317,10 +337,9 @@ def sanity_checks(dry=False):
         curl_cmd = (f"curl -s -o /dev/null -w '%{{http_code}}' "
                     f"-H '{hdr}: {sec}' '{url}' || true")
         run(curl_cmd, dry=dry, check=False)
-    
-    # Check memory service
-    memory_url = os.environ.get("MEMORY_SERVICE_URL", 
-                                "http://192.168.50.15:8102")
+
+    # Memory service health
+    memory_url = os.environ.get("MEMORY_SERVICE_URL", "http://192.168.50.15:8102")
     print(f"🧠 Checking memory service at {memory_url}...")
     health_cmd = (f"curl -f {memory_url}/healthz || "
                   "echo 'Memory service not available'")
@@ -378,9 +397,9 @@ def main():
     ap.add_argument("--config", action="store_true", help="ensure presets.json/tools.json")
     ap.add_argument("--test",   action="store_true", help="run tests (pytest / npm test)")
     ap.add_argument("--build",  action="store_true", help="build base + all services")
-    ap.add_argument("--deploy", action="store_true", help="restart systemd or docker compose")
+    ap.add_argument("--deploy", action="store_true", help="restart runtime and run integration test")
     ap.add_argument("--memory", action="store_true", help="deploy memory service to remote Docker host")
-    ap.add_argument("--sanity", action="store_true", help="sanity checks (envs, n8n)")
+    ap.add_argument("--sanity", action="store_true", help="sanity checks (envs, n8n, memory health)")
     ap.add_argument("--all",    action="store_true", help="run everything in order")
 
     # original flags preserved
@@ -388,10 +407,13 @@ def main():
     ap.add_argument("--multi-arch", action="store_true", help="buildx for linux/amd64,arm64")
     ap.add_argument("--tag", default="dev", help="image tag (default: dev)")
     ap.add_argument("--dry-run", action="store_true", help="print commands only")
+
+    # new behavior flags
     ap.add_argument("--memory-host", default="192.168.50.15", help="remote Docker host for memory service")
+    ap.add_argument("--ignore-test-fail", action="store_true", help="do not fail if integration test fails")
 
     args = ap.parse_args()
-    if not any([args.update, args.deps, args.config, args.test, args.build, 
+    if not any([args.update, args.deps, args.config, args.test, args.build,
                 args.deploy, args.memory, args.sanity, args.all]):
         # preserve old default behavior: build only
         args.build = True
@@ -410,10 +432,10 @@ def main():
         if args.all or args.test:
             run_tests(args.dry_run)
         if args.all or args.build:
-            build_images(tag=args.tag, push=args.push, 
-                        multi_arch=args.multi_arch, dry=args.dry_run)
+            build_images(tag=args.tag, push=args.push,
+                         multi_arch=args.multi_arch, dry=args.dry_run)
         if args.all or args.deploy:
-            deploy(args.dry_run)
+            deploy(dry=args.dry_run, ignore_test_fail=args.ignore_test_fail)
         if args.all or args.memory:
             deploy_memory_service(args.memory_host, args.dry_run)
         if args.all or args.sanity:
