@@ -30,13 +30,17 @@ from datetime import datetime
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Project constants
-# ──────────────────────────────────────────────────────────────────────────────
-
 REPO_ROOT    = Path(__file__).resolve().parent.parent
-ENV_FILE     = REPO_ROOT / ".env"
+
+# Prefer .env.prod if present, otherwise use .env
+ENV_FILE     = REPO_ROOT / ".env.prod"
+if not ENV_FILE.exists():
+    ENV_FILE = REPO_ROOT / ".env"
+
 CONFIG_DIR   = REPO_ROOT / "config"
 PRESETS_FILE = CONFIG_DIR / "presets.json"
 TOOLS_FILE   = CONFIG_DIR / "tools.json"
+
 
 # Your original service build order (kept verbatim)
 SERVICES = [
