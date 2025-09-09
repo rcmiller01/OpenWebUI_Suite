@@ -1,17 +1,39 @@
-ARG BASE_IMAGE=owui/base:py311
-FROM ${BASE_IMAGE} as runtime
+# syntax=docker/dockerfile:1
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# OS deps (curl for health checks/debug; build-base only if you have native wheels to compile)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
-ENV TELEMETRY_CACHE_VERSION=1.0.0 \
-        REDIS_URL=redis://redis:6379 \
-        PROMETHEUS_PORT=9090 \
-        LOG_LEVEL=INFO
-COPY requirements.txt ./requirements.txt
-RUN pip install -r requirements.txt -c /app/constraints.txt
-COPY src ./src
-COPY start.py .
-COPY start.sh .
-RUN chmod +x start.sh start.py
+
+# Copy only deps first for layer caching (adapt to your service)
+# If you use requirements.txt:
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
+
+# If you use pyproject.toml:
+# COPY pyproject.toml poetry.lock* ./
+# RUN pip install --upgrade pip && pip install --no-cache-dir .
+
+# Then copy the service code
+COPY . /app
+
+# Install runtime deps (gunicorn/uvicorn). If already in requirements, skip.
+RUN pip install --no-cache-dir gunicorn uvicorn fastapi || true
+
+# These can be overridden by env at runtime
+ENV SERVICE_MODULE="app.main:app" \
+    SERVICE_PORT="8000" \
+    WORKERS="2" \
+    TIMEOUT="60"
+
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request,sys;\nurl='http://localhost:8000/healthz';\n\ntry:\n urllib.request.urlopen(url,timeout=3).read();\nexcept Exception:\n sys.exit(1)" || exit 1
-CMD ["python", "start.py"]
+
+# Gunicorn + Uvicorn worker (sane defaults; env overrides allowed)
+CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker ${SERVICE_MODULE} -w ${WORKERS} -b 0.0.0.0:${SERVICE_PORT} --timeout ${TIMEOUT}"]

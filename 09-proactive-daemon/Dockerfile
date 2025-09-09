@@ -1,23 +1,39 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# OS deps (curl for health checks/debug; build-base only if you have native wheels to compile)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y bash && rm -rf /var/lib/apt/lists/*
+# Copy only deps first for layer caching (adapt to your service)
+# If you use requirements.txt:
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# If you use pyproject.toml:
+# COPY pyproject.toml poetry.lock* ./
+# RUN pip install --upgrade pip && pip install --no-cache-dir .
 
-# Copy application code
-COPY . .
+# Then copy the service code
+COPY . /app
 
-# Expose port
-EXPOSE 8109
+# Install runtime deps (gunicorn/uvicorn). If already in requirements, skip.
+RUN pip install --no-cache-dir gunicorn uvicorn fastapi || true
 
-# Health check using Python socket
-HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
-  CMD python -c "import socket,sys; s=socket.socket(); s.settimeout(3); s.connect(('localhost',8109)); s.close()" || exit 1
+# These can be overridden by env at runtime
+ENV SERVICE_MODULE="app.main:app" \
+    SERVICE_PORT="8000" \
+    WORKERS="2" \
+    TIMEOUT="60"
 
-# Start the application using start.sh (keeps parity with your repo)
-CMD ["bash", "start.sh"]
+EXPOSE 8000
+
+# Gunicorn + Uvicorn worker (sane defaults; env overrides allowed)
+CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker ${SERVICE_MODULE} -w ${WORKERS} -b 0.0.0.0:${SERVICE_PORT} --timeout ${TIMEOUT}"]

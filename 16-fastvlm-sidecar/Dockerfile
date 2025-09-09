@@ -1,34 +1,39 @@
-ARG BASE_IMAGE=owui/base:py311
-# To enable CUDA, build with: docker build --build-arg BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 .
-FROM ${BASE_IMAGE} as builder
-WORKDIR /app
-COPY requirements.txt ./requirements.txt
-# Split model/runtime heavy libs for caching
-RUN grep -E '^(torch|transformers|accelerate|Pillow)' requirements.txt > ml.txt || true \
- && grep -Ev '^(torch|transformers|accelerate|Pillow)' requirements.txt > base.txt || true \
- && pip install -r base.txt -c /app/constraints.txt \
- && if [ -s ml.txt ]; then pip install -r ml.txt; fi
-COPY src ./src
+# syntax=docker/dockerfile:1
+FROM python:3.11-slim
 
-FROM ${BASE_IMAGE} as runtime
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# OS deps (curl for health checks/debug; build-base only if you have native wheels to compile)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl && \
+    rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
-ARG PREFETCH_MODELS="false"
-COPY --from=builder /app /app
-RUN if [ "$PREFETCH_MODELS" = "true" ]; then \
-	python - <<'PY'
-import os
-from transformers import AutoModelForCausalLM, AutoProcessor
-model_id=os.getenv('FASTVLM_MODEL','apple/fastvlm-2.7b')
-try:
-	AutoProcessor.from_pretrained(model_id)
-	AutoModelForCausalLM.from_pretrained(model_id)
-	print('Prefetched model', model_id)
-except Exception as e:
-	print('Prefetch failed', e)
-PY
-	; fi
-ENV FASTVLM_MODEL=apple/fastvlm-2.7b DEVICE=cpu TORCH_DTYPE=float32 MAX_TOKENS=192
-EXPOSE 8115
-HEALTHCHECK --interval=35s --timeout=8s --start-period=5s --retries=4 \
-	CMD python -c "import urllib.request,sys;\nurl='http://localhost:8115/healthz';\n\ntry:\n urllib.request.urlopen(url,timeout=4).read();\nexcept Exception:\n sys.exit(1)" || exit 1
-CMD ["uvicorn","src.app:app","--host","0.0.0.0","--port","8115"]
+
+# Copy only deps first for layer caching (adapt to your service)
+# If you use requirements.txt:
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
+
+# If you use pyproject.toml:
+# COPY pyproject.toml poetry.lock* ./
+# RUN pip install --upgrade pip && pip install --no-cache-dir .
+
+# Then copy the service code
+COPY . /app
+
+# Install runtime deps (gunicorn/uvicorn). If already in requirements, skip.
+RUN pip install --no-cache-dir gunicorn uvicorn fastapi || true
+
+# These can be overridden by env at runtime
+ENV SERVICE_MODULE="app.main:app" \
+    SERVICE_PORT="8000" \
+    WORKERS="2" \
+    TIMEOUT="60"
+
+EXPOSE 8000
+
+# Gunicorn + Uvicorn worker (sane defaults; env overrides allowed)
+CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker ${SERVICE_MODULE} -w ${WORKERS} -b 0.0.0.0:${SERVICE_PORT} --timeout ${TIMEOUT}"]
