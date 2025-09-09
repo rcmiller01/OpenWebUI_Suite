@@ -24,19 +24,11 @@ fi
 echo "📂 Extracting service files..."
 unzip -o memory-service.zip
 
-# Find the actual directory (handle different zip structures)
-if [ -d "02-memory-2.0" ]; then
-    cd 02-memory-2.0
-elif [ -f "src/app.py" ]; then
-    # Files extracted to current directory
-    echo "📁 Files extracted to current directory"
-else
-    echo "❌ Could not find memory service files after extraction"
-    ls -la
-    exit 1
-fi
+# Check what was extracted and work with the files
+echo "📁 Files extracted. Working directory contents:"
+ls -la
 
-# Create a simple Dockerfile that doesn't rely on custom base image
+# Always create our standalone Dockerfile (overwrite the original)
 echo "🔧 Creating standalone Dockerfile..."
 cat > Dockerfile << 'EOF'
 FROM python:3.11-slim
@@ -62,6 +54,25 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 
 CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8102"]
 EOF
+
+# Verify we have the required files
+echo "🔍 Verifying required files..."
+if [ ! -f "requirements.txt" ]; then
+    echo "❌ requirements.txt not found"
+    exit 1
+fi
+
+if [ ! -f "src/app.py" ]; then
+    echo "❌ src/app.py not found"
+    exit 1
+fi
+
+if [ ! -f "start.py" ]; then
+    echo "❌ start.py not found"
+    exit 1
+fi
+
+echo "✅ All required files found"
 
 # Build the Docker image
 echo "🔨 Building Docker image..."
