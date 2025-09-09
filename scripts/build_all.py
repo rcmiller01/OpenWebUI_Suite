@@ -261,6 +261,52 @@ def deploy(dry=False):
     else:
         print("‼ No systemd unit or docker compose file found; skipping deploy.")
 
+def deploy_memory_service(remote_host="192.168.50.15", dry=False):
+    """Deploy Memory 2.0 service to remote Docker host"""
+    print(f"🧠 Deploying Memory 2.0 service to {remote_host}...")
+    
+    memory_dir = REPO_ROOT / "02-memory-2.0"
+    if not memory_dir.exists():
+        print(f"❌ Memory service directory not found: {memory_dir}")
+        return False
+    
+    # Create temp deployment package
+    import tempfile
+    import tarfile
+    
+    with tempfile.NamedTemporaryFile(suffix='.tar.gz', delete=False) as tmp:
+        with tarfile.open(tmp.name, 'w:gz') as tar:
+            tar.add(memory_dir, arcname='memory-service')
+        
+        # Copy to remote host (assumes SSH access)
+        scp_cmd = f"scp {tmp.name} root@{remote_host}:/tmp/memory-service.tar.gz"
+        run(scp_cmd, dry=dry)
+        
+        # Deploy on remote host
+        deploy_script = """
+            cd /tmp &&
+            tar -xzf memory-service.tar.gz &&
+            cd memory-service &&
+            docker build -t owui/memory-2.0:latest . &&
+            docker stop memory-service 2>/dev/null || true &&
+            docker rm memory-service 2>/dev/null || true &&
+            docker run -d --name memory-service --restart unless-stopped \\
+                -p 8102:8102 owui/memory-2.0:latest &&
+            sleep 5 &&
+            curl -f http://localhost:8102/healthz || echo "Health check failed"
+        """
+        
+        ssh_cmd = f"ssh root@{remote_host} '{deploy_script}'"
+        run(ssh_cmd, dry=dry)
+        
+        # Cleanup
+        import os
+        os.unlink(tmp.name)
+    
+    print(f"✅ Memory service deployed to http://{remote_host}:8102")
+    return True
+
+
 def sanity_checks(dry=False):
     if not os.environ.get("OPENROUTER_API_KEY"):
         print("⚠ OPENROUTER_API_KEY not set; remote routing may fail.")
@@ -268,7 +314,17 @@ def sanity_checks(dry=False):
     if url:
         hdr = os.environ.get("N8N_SHARED_HEADER", "X-N8N-Key")
         sec = os.environ.get("N8N_SHARED_SECRET", "")
-        run(f"curl -s -o /dev/null -w '%{{http_code}}' -H '{hdr}: {sec}' '{url}' || true", dry=dry, check=False)
+        curl_cmd = (f"curl -s -o /dev/null -w '%{{http_code}}' "
+                    f"-H '{hdr}: {sec}' '{url}' || true")
+        run(curl_cmd, dry=dry, check=False)
+    
+    # Check memory service
+    memory_url = os.environ.get("MEMORY_SERVICE_URL", 
+                                "http://192.168.50.15:8102")
+    print(f"🧠 Checking memory service at {memory_url}...")
+    health_cmd = (f"curl -f {memory_url}/healthz || "
+                  "echo 'Memory service not available'")
+    run(health_cmd, dry=dry, check=False)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Docker builds (base + services) — preserves your original behavior
@@ -323,6 +379,7 @@ def main():
     ap.add_argument("--test",   action="store_true", help="run tests (pytest / npm test)")
     ap.add_argument("--build",  action="store_true", help="build base + all services")
     ap.add_argument("--deploy", action="store_true", help="restart systemd or docker compose")
+    ap.add_argument("--memory", action="store_true", help="deploy memory service to remote Docker host")
     ap.add_argument("--sanity", action="store_true", help="sanity checks (envs, n8n)")
     ap.add_argument("--all",    action="store_true", help="run everything in order")
 
@@ -331,9 +388,11 @@ def main():
     ap.add_argument("--multi-arch", action="store_true", help="buildx for linux/amd64,arm64")
     ap.add_argument("--tag", default="dev", help="image tag (default: dev)")
     ap.add_argument("--dry-run", action="store_true", help="print commands only")
+    ap.add_argument("--memory-host", default="192.168.50.15", help="remote Docker host for memory service")
 
     args = ap.parse_args()
-    if not any([args.update,args.deps,args.config,args.test,args.build,args.deploy,args.sanity,args.all]):
+    if not any([args.update, args.deps, args.config, args.test, args.build, 
+                args.deploy, args.memory, args.sanity, args.all]):
         # preserve old default behavior: build only
         args.build = True
 
@@ -351,9 +410,12 @@ def main():
         if args.all or args.test:
             run_tests(args.dry_run)
         if args.all or args.build:
-            build_images(tag=args.tag, push=args.push, multi_arch=args.multi_arch, dry=args.dry_run)
+            build_images(tag=args.tag, push=args.push, 
+                        multi_arch=args.multi_arch, dry=args.dry_run)
         if args.all or args.deploy:
             deploy(args.dry_run)
+        if args.all or args.memory:
+            deploy_memory_service(args.memory_host, args.dry_run)
         if args.all or args.sanity:
             sanity_checks(args.dry_run)
         print("\n✅ Done.")

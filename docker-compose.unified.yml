@@ -26,8 +26,9 @@ services:
       - LLAMACPP_HOST=${LLAMACPP_HOST:-localhost}
       - LLAMACPP_PORT=${LLAMACPP_PORT:-8080}
       # Memory Service
-      - MEMORY_SERVICE_URL=http://02-memory-2-0:8002
+      - MEMORY_SERVICE_URL=http://192.168.50.15:8102
       - MEMORY_ENABLED=${MEMORY_ENABLED:-true}
+      - MEMORY_TIMEOUT=${MEMORY_TIMEOUT:-10}
       # Feature Flags
       - ENABLE_OPENROUTER=${ENABLE_OPENROUTER:-true}
       - ENABLE_LOCAL_FALLBACK=${ENABLE_LOCAL_FALLBACK:-true}
