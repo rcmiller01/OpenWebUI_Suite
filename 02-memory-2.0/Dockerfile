@@ -28,12 +28,12 @@ COPY . /app
 RUN pip install --no-cache-dir gunicorn uvicorn fastapi || true
 
 # These can be overridden by env at runtime
-ENV SERVICE_MODULE="app.main:app" \
-    SERVICE_PORT="8000" \
+ENV SERVICE_MODULE="src.app:app" \
+    SERVICE_PORT="8102" \
     WORKERS="2" \
     TIMEOUT="60"
 
-EXPOSE 8000
+EXPOSE 8102
 
 # Gunicorn + Uvicorn worker (sane defaults; env overrides allowed)
 CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker ${SERVICE_MODULE} -w ${WORKERS} -b 0.0.0.0:${SERVICE_PORT} --timeout ${TIMEOUT}"]

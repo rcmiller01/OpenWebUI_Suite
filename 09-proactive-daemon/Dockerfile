@@ -27,13 +27,13 @@ COPY . /app
 # Install runtime deps (gunicorn/uvicorn). If already in requirements, skip.
 RUN pip install --no-cache-dir gunicorn uvicorn fastapi || true
 
-# These can be overridden by env at runtime
-ENV SERVICE_MODULE="app.main:app" \
-    SERVICE_PORT="8000" \
-    WORKERS="2" \
-    TIMEOUT="60"
+# This is a worker daemon, not a web service
+ENV WORKER_MODULE="src.worker" \
+    CONFIG_FILE="config/triggers.yaml" \
+    VERBOSE="false" \
+    ONCE="false"
 
-EXPOSE 8000
+# No exposed port for worker daemon
 
-# Gunicorn + Uvicorn worker (sane defaults; env overrides allowed)
-CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker ${SERVICE_MODULE} -w ${WORKERS} -b 0.0.0.0:${SERVICE_PORT} --timeout ${TIMEOUT}"]
+# Start the worker daemon directly
+CMD ["python", "src/worker.py"]
