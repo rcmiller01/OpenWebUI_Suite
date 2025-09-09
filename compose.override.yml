@@ -1,0 +1,34 @@
+# compose.override.yml
+services:
+  gateway:
+    image: owui/gateway:prod
+  intent:
+    image: owui/intent-router:prod
+  memory:
+    # omit if you use the remote memory; include only for local dev
+    image: owui/memory-2.0:prod
+  feeling:
+    image: owui/feeling-engine:prod
+  merger:
+    image: owui/hidden-multi-expert-merger:prod
+  drive:
+    image: owui/drive-state:prod
+  byof:
+    image: owui/byof-tool-hub:prod
+  tandoor:
+    image: owui/tandoor-sidecar:prod
+  openbb:
+    image: owui/openbb-sidecar:prod
+  multimodal:
+    image: owui/multimodal-router:prod
+  stt-tts:
+    image: owui/stt-tts-gateway:prod
+  avatar:
+    image: owui/avatar-overlay:prod
+  policy:
+    image: owui/policy-guardrails:prod
+  telemetry:
+    image: owui/telemetry-cache:prod
+  fastvlm:
+    image: owui/fastvlm-sidecar:prod
+  # 09-proactive-daemon is a worker—see “worker” snippet below
