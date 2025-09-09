@@ -35,5 +35,9 @@ ENV WORKER_MODULE="src.worker" \
 
 # No exposed port for worker daemon
 
+# Health check for worker process monitoring
+HEALTHCHECK --interval=60s --timeout=10s --start-period=10s --retries=3 \
+    CMD pgrep -f "src/worker.py" || exit 1
+
 # Start the worker daemon directly
 CMD ["python", "src/worker.py"]

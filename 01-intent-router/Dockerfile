@@ -35,5 +35,9 @@ ENV SERVICE_MODULE="src.app:app" \
 
 EXPOSE 8101
 
+# Health check for service monitoring
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8101/healthz || exit 1
+
 # Gunicorn + Uvicorn worker (sane defaults; env overrides allowed)
 CMD ["sh", "-c", "exec gunicorn -k uvicorn.workers.UvicornWorker ${SERVICE_MODULE} -w ${WORKERS} -b 0.0.0.0:${SERVICE_PORT} --timeout ${TIMEOUT}"]
