@@ -1,6 +1,25 @@
-# OpenWebUI Suite - Enhanced Routing System
+# OpenWebUI Suite - Production Deployment Guide
 
 A production-ready intelligent content routing system for OpenWebUI with emotional intelligence, compliance controls, and cost optimization.
+
+## 🚀 Quick Production Deployment
+
+### Step 1: Update Repository
+```bash
+cd /opt/openwebui-suite
+git pull origin main
+```
+
+### Step 2: Activate Environment
+```bash
+source .venv/bin/activate
+```
+
+### Step 3: Deploy Services
+```bash
+chmod +x *.sh
+./owui-service-manager.sh bring-up
+```
 
 ## 🎯 Key Features
 

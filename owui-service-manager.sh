@@ -85,10 +85,12 @@ show_service_logs() {
     
     say "Recent logs for $service_dir (last $lines lines):"
     
-    if systemctl list-units --all | grep -q "$unit_name"; then
+    if [ -f "/etc/systemd/system/$unit_name" ]; then
         journalctl -u "$unit_name" -n "$lines" --no-pager || warn "No logs available for $unit_name"
     else
-        warn "Systemd unit $unit_name not found"
+        warn "Systemd unit file not found: /etc/systemd/system/$unit_name"
+        info "Available unit files:"
+        ls -la /etc/systemd/system/owui-*.service 2>/dev/null || warn "No owui service units found"
     fi
 }
 
@@ -174,8 +176,28 @@ WantedBy=multi-user.target
 UNITFILE
     fi
     
+    # Validate unit file was created successfully
+    if [ ! -f "$unit_file" ]; then
+        err "Failed to create unit file: $unit_file"
+        return 1
+    fi
+    
+    # Validate unit file syntax
+    if ! sudo systemd-analyze verify "$unit_file" 2>/dev/null; then
+        warn "Unit file syntax issues detected, but continuing..."
+    fi
+    
     sudo systemctl daemon-reload
-    ok "Created unit file: $unit_file"
+    
+    # Verify unit is recognized by systemd
+    if ! systemctl list-unit-files | grep -q "$unit_name"; then
+        err "Unit file not recognized by systemd: $unit_name"
+        info "Unit file contents:"
+        sudo cat "$unit_file"
+        return 1
+    fi
+    
+    ok "Created and validated unit file: $unit_file"
 }
 
 # Start a service
@@ -268,6 +290,79 @@ health_check_all() {
     done
 }
 
+# Verify and fix all systemd units
+verify_all_units() {
+    say "Verifying all systemd units..."
+    
+    local missing_units=()
+    local failed_units=()
+    
+    for service_dir in "${!SERVICES[@]}"; do
+        if [ ! -d "$SUITE_DIR/$service_dir" ]; then
+            warn "Skipping $service_dir - service directory not found"
+            continue
+        fi
+        
+        local unit_name="owui-${service_dir}.service"
+        local unit_file="/etc/systemd/system/$unit_name"
+        
+        # Check if unit file exists
+        if [ ! -f "$unit_file" ]; then
+            missing_units+=("$service_dir")
+            warn "Missing unit file: $unit_file"
+        else
+            # Check if unit is valid
+            if ! sudo systemd-analyze verify "$unit_file" 2>/dev/null; then
+                failed_units+=("$service_dir")
+                warn "Invalid unit file: $unit_file"
+            else
+                ok "Valid unit: $unit_name"
+            fi
+        fi
+    done
+    
+    # Create missing units
+    if [ ${#missing_units[@]} -gt 0 ]; then
+        say "Creating ${#missing_units[@]} missing unit files..."
+        for service_dir in "${missing_units[@]}"; do
+            info "Creating unit for $service_dir"
+            create_service_unit "$service_dir"
+        done
+    fi
+    
+    # Recreate failed units
+    if [ ${#failed_units[@]} -gt 0 ]; then
+        say "Recreating ${#failed_units[@]} invalid unit files..."
+        for service_dir in "${failed_units[@]}"; do
+            info "Recreating unit for $service_dir"
+            sudo rm -f "/etc/systemd/system/owui-${service_dir}.service"
+            create_service_unit "$service_dir"
+        done
+    fi
+    
+    # Final verification
+    sudo systemctl daemon-reload
+    
+    say "Unit verification summary:"
+    printf "%-25s %-12s %s\n" "SERVICE" "STATUS" "UNIT FILE"
+    printf "%-25s %-12s %s\n" "-------" "------" "---------"
+    
+    for service_dir in "${!SERVICES[@]}"; do
+        if [ ! -d "$SUITE_DIR/$service_dir" ]; then
+            continue
+        fi
+        
+        local unit_name="owui-${service_dir}.service"
+        local unit_file="/etc/systemd/system/$unit_name"
+        
+        if [ -f "$unit_file" ] && sudo systemd-analyze verify "$unit_file" 2>/dev/null; then
+            printf "%-25s %-12s %s\n" "$service_dir" "✅ VALID" "$unit_file"
+        else
+            printf "%-25s %-12s %s\n" "$service_dir" "❌ INVALID" "$unit_file"
+        fi
+    done
+}
+
 # Bring up all services
 bring_up_all() {
     say "Bringing up all OpenWebUI Suite services..."
@@ -320,6 +415,10 @@ main() {
             check_prerequisites
             create_service_unit "$2"
             ;;
+        "verify")
+            check_prerequisites
+            verify_all_units
+            ;;
         "start")
             if [ -z "${2:-}" ]; then
                 echo "Usage: $0 start <service-name>"
@@ -351,6 +450,7 @@ Commands:
   discover          Show all services and their status
   logs <service>    Show recent logs for a specific service
   create-unit <service>  Create systemd unit for a service
+  verify            Verify and fix all systemd units
   start <service>   Start a specific service
   health [service]  Check health of all services or a specific one
   bring-up         Create units and start all services
@@ -362,6 +462,7 @@ $(printf "  %s\n" "${!SERVICES[@]}" | sort)
 Examples:
   $0 discover                    # List all services
   $0 logs 00-pipelines-gateway   # Show gateway logs
+  $0 verify                      # Verify all systemd units
   $0 health                      # Check all service health
   $0 bring-up                    # Start everything
 HELP
