@@ -1,0 +1,72 @@
+# OpenWebUI Suite - Complete Deployment Commands
+# Run these commands on your Linux production server to complete the deployment
+
+# Navigate to the suite directory
+cd /opt/openwebui-suite
+
+# Fix the service manager script (remove extra brace)
+sed -i '371d' owui-service-manager.sh
+
+# Make scripts executable
+chmod +x *.sh
+
+# Create missing systemd units
+sudo systemctl daemon-reload
+
+# Create units for missing services (if directories exist)
+if [ -d "04-hidden-multi-expert-merger" ]; then
+    ./owui-service-manager.sh create-unit "04-hidden-multi-expert-merger"
+    sudo systemctl enable owui-04-hidden-multi-expert-merger.service
+    sudo systemctl start owui-04-hidden-multi-expert-merger.service
+fi
+
+if [ -d "11-stt-tts-gateway" ]; then
+    ./owui-service-manager.sh create-unit "11-stt-tts-gateway"
+    sudo systemctl enable owui-11-stt-tts-gateway.service
+    sudo systemctl start owui-11-stt-tts-gateway.service
+fi
+
+if [ -d "12-avatar-overlay" ]; then
+    ./owui-service-manager.sh create-unit "12-avatar-overlay"
+    sudo systemctl enable owui-12-avatar-overlay.service
+    sudo systemctl start owui-12-avatar-overlay.service
+fi
+
+if [ -d "14-telemetry-cache" ]; then
+    ./owui-service-manager.sh create-unit "14-telemetry-cache"
+    sudo systemctl enable owui-14-telemetry-cache.service
+    sudo systemctl start owui-14-telemetry-cache.service
+fi
+
+# Check if there's a 15th service
+if [ -d "15-"* ]; then
+    SERVICE_15=$(ls -d 15-* | head -1 | sed 's|/||')
+    ./owui-service-manager.sh create-unit "$SERVICE_15"
+    sudo systemctl enable "owui-${SERVICE_15}.service"
+    sudo systemctl start "owui-${SERVICE_15}.service"
+fi
+
+# Fix the failing policy-guardrails service
+sudo systemctl stop owui-13-policy-guardrails.service
+sleep 3
+sudo systemctl start owui-13-policy-guardrails.service
+
+# Reload systemd and show final status
+sudo systemctl daemon-reload
+
+echo "🎉 All services status:"
+systemctl list-units 'owui-*' --type=service
+
+echo ""
+echo "🏥 Health check:"
+for port in {8100..8115}; do
+    if curl -s -f "http://localhost:$port/healthz" >/dev/null 2>&1; then
+        echo "✅ Port $port: Healthy"
+    else
+        echo "❌ Port $port: Not responding"  
+    fi
+done
+
+echo ""
+echo "✅ Deployment completed!"
+echo "Expected result: 16 active services"

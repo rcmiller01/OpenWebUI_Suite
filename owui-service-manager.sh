@@ -368,7 +368,6 @@ create_service_unit() {
     
     ok "Created and validated unit file: $unit_file"
 }
-}
 
 # Start a service
 start_service() {
