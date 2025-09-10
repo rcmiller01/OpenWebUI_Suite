@@ -18,6 +18,9 @@ source .venv/bin/activate
 ### Step 3: Deploy Services
 ```bash
 chmod +x *.sh
+# Verify all systemd units are valid (optional but recommended)
+./owui-service-manager.sh verify
+# Deploy all services
 ./owui-service-manager.sh bring-up
 ```
 
@@ -370,6 +373,22 @@ make compose-validate
 
 # Full system check
 make sanity
+
+# Service Manager Troubleshooting
+./owui-service-manager.sh verify      # Fix systemd unit issues
+./owui-service-manager.sh info <service>   # Show service structure and config
+./owui-service-manager.sh logs <service>  # View service-specific logs
+./owui-service-manager.sh health <service>  # Check individual service health
 ```
+
+### Common Service Issues
+
+1. **Node.js Services (12-avatar-overlay)**: If you see "No module named 'src'" errors, the service needs Node.js/npm instead of Python. The enhanced service manager now auto-detects service types.
+
+2. **Python Import Errors**: Check that the service directory has proper src/ structure and PYTHONPATH is set correctly.
+
+3. **Unit File Issues**: Run `./owui-service-manager.sh verify` to automatically detect and fix systemd unit problems.
+
+4. **Database Permission Errors**: The service manager automatically creates data directories with proper ownership for database services.
 
 For additional support, see AGENT.md files in each service directory.

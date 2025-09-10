@@ -94,7 +94,202 @@ show_service_logs() {
     fi
 }
 
-# Create systemd unit for a service
+# Detect service type based on files present
+detect_service_type() {
+    local service_dir="$1"
+    local full_path="$SUITE_DIR/$service_dir"
+    
+    if [ -f "$full_path/package.json" ]; then
+        echo "nodejs"
+    elif [ -f "$full_path/start.py" ]; then
+        # Check if start.py uses uvicorn for FastAPI
+        if grep -q "uvicorn\|fastapi" "$full_path/start.py" 2>/dev/null; then
+            echo "python"  # Use start.py directly for FastAPI apps
+        else
+            echo "python"
+        fi
+    elif [ -f "$full_path/src/server.py" ]; then
+        echo "fastapi"  # Only for services that have src/server.py specifically
+    elif [ -f "$full_path/src/worker.py" ]; then
+        echo "worker"
+    elif [ -f "$full_path/src/app.py" ] && [ ! -f "$full_path/start.py" ]; then
+        echo "fastapi"  # Only if no start.py exists
+    elif [ -f "$full_path/start.sh" ]; then
+        echo "shell"
+    else
+        echo "unknown"
+    fi
+}
+
+# Create Node.js service unit
+create_nodejs_unit() {
+    local service_dir="$1"
+    local service_path="$2"
+    local unit_file="$3"
+    
+    sudo tee "$unit_file" >/dev/null <<UNITFILE
+[Unit]
+Description=OpenWebUI ${service_dir} (Node.js)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=owui
+Group=owui
+WorkingDirectory=$service_path
+ExecStartPre=/bin/bash -c 'cd $service_path && [ ! -d node_modules ] && npm install || true'
+ExecStart=/bin/bash $service_path/start.sh
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+Environment=PORT=5173
+
+[Install]
+WantedBy=multi-user.target
+UNITFILE
+}
+
+# Create FastAPI service unit
+create_fastapi_unit() {
+    local service_dir="$1"
+    local service_path="$2"
+    local unit_file="$3"
+    
+    IFS=':' read -r port description <<< "${SERVICES[$service_dir]}"
+    
+    # Determine the correct module path for uvicorn
+    local uvicorn_module="src.server:app"
+    if [ -f "$service_path/src/app.py" ] && [ ! -f "$service_path/src/server.py" ]; then
+        uvicorn_module="src.app:app"
+    fi
+    
+    local env_vars=""
+    case "$service_dir" in
+        "00-pipelines-gateway")
+            env_vars="Environment=GATEWAY_DB=$service_path/data/gateway.db"
+            ;;
+        "02-memory-2.0")
+            env_vars="Environment=MEMORY_DB=$service_path/data/memory.db"
+            ;;
+        "13-policy-guardrails")
+            env_vars="Environment=POLICY_DB=$service_path/data/policy.db"
+            ;;
+        "14-telemetry-cache")
+            env_vars="Environment=TELEMETRY_DB=$service_path/data/telemetry.db"
+            ;;
+    esac
+    
+    sudo tee "$unit_file" >/dev/null <<UNITFILE
+[Unit]
+Description=OpenWebUI ${service_dir} (FastAPI)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=owui
+Group=owui
+WorkingDirectory=$service_path
+EnvironmentFile=$ENV_FILE
+$env_vars
+Environment=PYTHONPATH=$service_path
+Environment=PYTHONUNBUFFERED=1
+ExecStart=$UVICORN_BIN $uvicorn_module --host 0.0.0.0 --port $port
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+UNITFILE
+}
+
+# Create worker service unit
+create_worker_unit() {
+    local service_dir="$1"
+    local service_path="$2"
+    local unit_file="$3"
+    
+    sudo tee "$unit_file" >/dev/null <<UNITFILE
+[Unit]
+Description=OpenWebUI ${service_dir} (Worker)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=owui
+Group=owui
+WorkingDirectory=$service_path
+EnvironmentFile=$ENV_FILE
+Environment=PYTHONPATH=$service_path
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 src/worker.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+UNITFILE
+}
+
+# Create Python service unit
+create_python_unit() {
+    local service_dir="$1"
+    local service_path="$2" 
+    local unit_file="$3"
+    
+    sudo tee "$unit_file" >/dev/null <<UNITFILE
+[Unit]
+Description=OpenWebUI ${service_dir} (Python)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=owui
+Group=owui
+WorkingDirectory=$service_path
+EnvironmentFile=$ENV_FILE
+Environment=PYTHONPATH=$service_path
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 start.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+UNITFILE
+}
+
+# Create shell service unit
+create_shell_unit() {
+    local service_dir="$1"
+    local service_path="$2"
+    local unit_file="$3"
+    
+    sudo tee "$unit_file" >/dev/null <<UNITFILE
+[Unit]
+Description=OpenWebUI ${service_dir} (Shell)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=owui
+Group=owui
+WorkingDirectory=$service_path
+EnvironmentFile=$ENV_FILE
+ExecStart=/bin/bash start.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+UNITFILE
+}
+
+# Create systemd unit file for a service
 create_service_unit() {
     local service_dir="$1"
     IFS=':' read -r port description <<< "${SERVICES[$service_dir]}"
@@ -110,71 +305,43 @@ create_service_unit() {
         return 1
     fi
     
+    # Detect service type
+    local service_type=$(detect_service_type "$service_dir")
+    info "Detected service type: $service_type for $service_dir"
+    
     # Create data directory for services that need it
     if [[ "$service_dir" =~ (gateway|memory|policy|telemetry) ]]; then
         sudo mkdir -p "$service_path/data"
-        sudo chown -R root:root "$service_path/data"
+        sudo chown -R owui:owui "$service_path/data"
         sudo chmod 755 "$service_path/data"
     fi
     
-    # Special handling for worker daemon (no port)
-    if [ "$port" = "0" ]; then
-        sudo tee "$unit_file" >/dev/null <<UNITFILE
-[Unit]
-Description=$description
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=root
-WorkingDirectory=$service_path
-EnvironmentFile=$ENV_FILE
-ExecStart=/usr/bin/python3 src/worker.py
-Restart=always
-RestartSec=5
-LimitNOFILE=65535
-
-[Install]
-WantedBy=multi-user.target
-UNITFILE
-    else
-        # Standard HTTP service
-        local env_vars=""
-        case "$service_dir" in
-            "00-pipelines-gateway")
-                env_vars="Environment=GATEWAY_DB=$service_path/data/gateway.db"
-                ;;
-            "02-memory-2.0")
-                env_vars="Environment=MEMORY_DB=$service_path/data/memory.db"
-                ;;
-            "13-policy-guardrails")
-                env_vars="Environment=POLICY_DB=$service_path/data/policy.db"
-                ;;
-            "14-telemetry-cache")
-                env_vars="Environment=TELEMETRY_DB=$service_path/data/telemetry.db"
-                ;;
-        esac
-        
-        sudo tee "$unit_file" >/dev/null <<UNITFILE
-[Unit]
-Description=$description
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=root
-WorkingDirectory=$service_path
-EnvironmentFile=$ENV_FILE
-$env_vars
-ExecStart=$UVICORN_BIN src.server:app --host 0.0.0.0 --port $port
-Restart=always
-RestartSec=2
-LimitNOFILE=65535
-
-[Install]
-WantedBy=multi-user.target
-UNITFILE
-    fi
+    # Create the systemd unit based on service type
+    case "$service_type" in
+        "nodejs")
+            create_nodejs_unit "$service_dir" "$service_path" "$unit_file"
+            ;;
+        "fastapi")
+            create_fastapi_unit "$service_dir" "$service_path" "$unit_file"
+            ;;
+        "worker")
+            create_worker_unit "$service_dir" "$service_path" "$unit_file"
+            ;;
+        "python")
+            create_python_unit "$service_dir" "$service_path" "$unit_file"
+            ;;
+        "shell")
+            create_shell_unit "$service_dir" "$service_path" "$unit_file"
+            ;;
+        *)
+            # Fallback to original logic for special cases
+            if [ "$port" = "0" ]; then
+                create_worker_unit "$service_dir" "$service_path" "$unit_file"
+            else
+                create_fastapi_unit "$service_dir" "$service_path" "$unit_file"
+            fi
+            ;;
+    esac
     
     # Validate unit file was created successfully
     if [ ! -f "$unit_file" ]; then
@@ -184,13 +351,15 @@ UNITFILE
     
     # Validate unit file syntax
     if ! sudo systemd-analyze verify "$unit_file" 2>/dev/null; then
-        warn "Unit file syntax issues detected, but continuing..."
+        warn "Unit file syntax issues detected:"
+        sudo systemd-analyze verify "$unit_file" 2>&1 || true
+        return 1
     fi
     
     sudo systemctl daemon-reload
     
     # Verify unit is recognized by systemd
-    if ! systemctl list-unit-files | grep -q "$unit_name"; then
+    if ! sudo systemctl cat "$unit_name" >/dev/null 2>&1; then
         err "Unit file not recognized by systemd: $unit_name"
         info "Unit file contents:"
         sudo cat "$unit_file"
@@ -198,6 +367,7 @@ UNITFILE
     fi
     
     ok "Created and validated unit file: $unit_file"
+}
 }
 
 # Start a service
@@ -288,6 +458,55 @@ health_check_all() {
             fi
         fi
     done
+}
+
+# Show service structure and detection info
+show_service_info() {
+    local service_dir="$1"
+    local service_path="$SUITE_DIR/$service_dir"
+    
+    if [ ! -d "$service_path" ]; then
+        err "Service directory not found: $service_path"
+        return 1
+    fi
+    
+    echo "🔍 Service Information: $service_dir"
+    echo "📁 Path: $service_path"
+    echo "🏷️  Type: $(detect_service_type "$service_dir")"
+    echo ""
+    echo "📋 File Structure:"
+    if [ -f "$service_path/package.json" ]; then
+        echo "  ✅ package.json (Node.js service)"
+    fi
+    if [ -f "$service_path/start.py" ]; then
+        echo "  ✅ start.py (Python entry point)"
+        if grep -q "uvicorn" "$service_path/start.py" 2>/dev/null; then
+            echo "    → Contains uvicorn (FastAPI)"
+        fi
+    fi
+    if [ -f "$service_path/src/server.py" ]; then
+        echo "  ✅ src/server.py (FastAPI server)"
+    fi
+    if [ -f "$service_path/src/app.py" ]; then
+        echo "  ✅ src/app.py (FastAPI app)"
+    fi
+    if [ -f "$service_path/src/worker.py" ]; then
+        echo "  ✅ src/worker.py (Background worker)"
+    fi
+    if [ -f "$service_path/start.sh" ]; then
+        echo "  ✅ start.sh (Shell script)"
+    fi
+    echo ""
+    
+    # Show current systemd unit if it exists
+    local unit_file="/etc/systemd/system/owui-${service_dir}.service"
+    if [ -f "$unit_file" ]; then
+        echo "🔧 Current Systemd Unit:"
+        echo "ExecStart line:"
+        grep "ExecStart=" "$unit_file" || echo "  No ExecStart found"
+    else
+        echo "❌ No systemd unit file found"
+    fi
 }
 
 # Verify and fix all systemd units
@@ -419,6 +638,14 @@ main() {
             check_prerequisites
             verify_all_units
             ;;
+        "info")
+            if [ -z "${2:-}" ]; then
+                echo "Usage: $0 info <service-name>"
+                echo "Available services: ${!SERVICES[*]}"
+                exit 1
+            fi
+            show_service_info "$2"
+            ;;
         "start")
             if [ -z "${2:-}" ]; then
                 echo "Usage: $0 start <service-name>"
@@ -451,6 +678,7 @@ Commands:
   logs <service>    Show recent logs for a specific service
   create-unit <service>  Create systemd unit for a service
   verify            Verify and fix all systemd units
+  info <service>    Show detailed service structure and configuration
   start <service>   Start a specific service
   health [service]  Check health of all services or a specific one
   bring-up         Create units and start all services
@@ -462,6 +690,7 @@ $(printf "  %s\n" "${!SERVICES[@]}" | sort)
 Examples:
   $0 discover                    # List all services
   $0 logs 00-pipelines-gateway   # Show gateway logs
+  $0 info 06-byof-tool-hub       # Show service structure and config
   $0 verify                      # Verify all systemd units
   $0 health                      # Check all service health
   $0 bring-up                    # Start everything
