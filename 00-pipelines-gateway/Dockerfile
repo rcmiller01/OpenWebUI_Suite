@@ -24,6 +24,9 @@ WORKDIR /app
 # Then copy the service code
 COPY . /app
 
+# Create data directory for SQLite database persistence
+RUN mkdir -p /app/data && chmod 755 /app/data
+
 # Install runtime deps (gunicorn/uvicorn). If already in requirements, skip.
 RUN pip install --no-cache-dir gunicorn uvicorn fastapi || true
 
@@ -34,6 +37,9 @@ ENV SERVICE_MODULE="src.server:app" \
     TIMEOUT="60"
 
 EXPOSE 8088
+
+# Declare volume for database persistence
+VOLUME ["/app/data"]
 
 # Health check for service monitoring
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

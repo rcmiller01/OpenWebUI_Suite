@@ -7,11 +7,16 @@ import sqlite3
 import time
 import uuid
 
-DB_PATH = os.getenv("GATEWAY_DB", "/data/gateway.db")
+# Use /app/data for database (containers should mount volume here)
+DB_PATH = os.getenv("GATEWAY_DB", "/app/data/gateway.db")
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
 def _conn():
+    # Ensure the database directory exists
+    db_dir = os.path.dirname(DB_PATH)
+    os.makedirs(db_dir, exist_ok=True)
+    
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL;")
     return conn
