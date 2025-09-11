@@ -1,0 +1,66 @@
+# OpenWebUI Suite - Python Path Fix Commands
+# Run these on your production server to fix the "Could not import module src.server" errors
+
+cd /opt/openwebui-suite
+
+# The issue: systemd units are using "uvicorn src.server:app" but services have start.py files
+# Solution: Update systemd units to use start.py instead
+
+echo "🔧 Fixing Python import errors..."
+
+# 1. Stop all problematic services
+sudo systemctl stop owui-01-intent-router.service
+sudo systemctl stop owui-02-memory-2.0.service
+sudo systemctl stop owui-03-feeling-engine.service
+sudo systemctl stop owui-04-hidden-multi-expert-merger.service
+sudo systemctl stop owui-05-drive-state.service
+sudo systemctl stop owui-09-proactive-daemon.service
+sudo systemctl stop owui-10-multimodal-router.service
+sudo systemctl stop owui-11-stt-tts-gateway.service
+sudo systemctl stop owui-12-avatar-overlay.service
+sudo systemctl stop owui-13-policy-guardrails.service
+sudo systemctl stop owui-14-telemetry-cache.service
+sudo systemctl stop owui-16-fastvlm-sidecar.service
+
+# 2. Fix each systemd unit to use start.py instead of uvicorn
+for service in 01-intent-router 02-memory-2.0 03-feeling-engine 04-hidden-multi-expert-merger 05-drive-state 09-proactive-daemon 10-multimodal-router 11-stt-tts-gateway 12-avatar-overlay 13-policy-guardrails 14-telemetry-cache 16-fastvlm-sidecar; do
+    unit_file="/etc/systemd/system/owui-${service}.service"
+    if [ -f "$service/start.py" ]; then
+        echo "Fixing $service..."
+        sudo sed -i "s|ExecStart=.*uvicorn.*|ExecStart=/opt/openwebui-suite/.venv/bin/python3 /opt/openwebui-suite/${service}/start.py|" "$unit_file"
+        sudo sed -i "s|WorkingDirectory=.*|WorkingDirectory=/opt/openwebui-suite/${service}|" "$unit_file"
+    fi
+done
+
+# 3. Reload systemd
+sudo systemctl daemon-reload
+
+# 4. Start all services
+sudo systemctl start owui-01-intent-router.service
+sudo systemctl start owui-02-memory-2.0.service
+sudo systemctl start owui-03-feeling-engine.service
+sudo systemctl start owui-04-hidden-multi-expert-merger.service
+sudo systemctl start owui-05-drive-state.service
+sudo systemctl start owui-09-proactive-daemon.service
+sudo systemctl start owui-10-multimodal-router.service
+sudo systemctl start owui-11-stt-tts-gateway.service
+sudo systemctl start owui-12-avatar-overlay.service
+sudo systemctl start owui-13-policy-guardrails.service
+sudo systemctl start owui-14-telemetry-cache.service
+sudo systemctl start owui-16-fastvlm-sidecar.service
+
+# 5. Check final status
+echo "Final status:"
+systemctl list-units 'owui-*' --type=service
+
+# 6. Health check
+echo "Health check:"
+for port in {8100..8115}; do
+    if curl -s -f "http://localhost:$port/healthz" >/dev/null 2>&1; then
+        echo "✅ Port $port: Healthy"
+    else
+        echo "❌ Port $port: Not responding"
+    fi
+done
+
+# EXPECTED RESULT: All 14 core services should now be running and healthy!
