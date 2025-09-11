@@ -81,18 +81,14 @@ chmod +x *.sh
 
 ## 📊 Service Architecture
 
-### Core Services (Profile: core)
+### Core Services (Built-in - 14 services)
 - **Gateway** (8000): Main API gateway with projects and health endpoints
 - **Intent Router** (8101): Enhanced family-based classification engine
 - **Memory 2.0** (8102): Conversation memory and context management
 - **Feeling Engine** (8103): Emotion template system for prompt augmentation
-
-### Extended Services
 - **Multi-Expert Merger** (8104): Response aggregation and quality control
 - **Drive State** (8105): Motivational state tracking
 - **BYOF Tool Hub** (8106): Custom tool integration
-- **Tandoor Sidecar** (8107): Recipe and cooking assistant
-- **OpenBB Sidecar** (8108): Financial data integration
 - **Proactive Daemon** (8109): Background task management
 - **Multimodal Router** (8110): Image/video processing pipeline
 - **STT/TTS Gateway** (8111): Speech processing
@@ -100,6 +96,12 @@ chmod +x *.sh
 - **Policy Guardrails** (8113): Compliance enforcement
 - **Telemetry Cache** (8114): Monitoring and metrics
 - **FastVLM Sidecar** (8115): Vision-language model processing
+
+### External Sidecar Services (Optional - Require separate setup)
+- **Tandoor Sidecar** (8107): Recipe and cooking assistant *[External GitHub repo required]*
+- **OpenBB Sidecar** (8108): Financial data integration *[External GitHub repo required]*
+
+> **Note**: Sidecar services require cloning and setting up their respective GitHub repositories. They are disabled by default in core deployments.
 
 ## 🧠 Enhanced Routing Examples
 

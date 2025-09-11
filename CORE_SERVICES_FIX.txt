@@ -1,0 +1,47 @@
+# OpenWebUI Suite - Core Services Commands
+# Run these on your production server to get core services stable
+
+cd /opt/openwebui-suite
+
+# 1. DISABLE external sidecar services (require separate GitHub repos)
+echo "Disabling external sidecar services..."
+sudo systemctl stop owui-07-tandoor-sidecar.service owui-08-openbb-sidecar.service
+sudo systemctl disable owui-07-tandoor-sidecar.service owui-08-openbb-sidecar.service
+
+# 2. FIX the 3 remaining core services in auto-restart
+echo "Fixing core services..."
+
+# Fix feeling engine
+sudo systemctl stop owui-03-feeling-engine.service
+sudo mkdir -p 03-feeling-engine/data
+sudo chown -R $(whoami):$(whoami) 03-feeling-engine/
+sudo systemctl start owui-03-feeling-engine.service
+
+# Fix drive state
+sudo systemctl stop owui-05-drive-state.service
+sudo mkdir -p 05-drive-state/data
+sudo chown -R $(whoami):$(whoami) 05-drive-state/
+sudo systemctl start owui-05-drive-state.service
+
+# Fix telemetry cache
+sudo systemctl stop owui-14-telemetry-cache.service
+sudo mkdir -p 14-telemetry-cache/data
+sudo chown -R $(whoami):$(whoami) 14-telemetry-cache/
+sudo systemctl start owui-14-telemetry-cache.service
+
+# 3. CHECK final status
+echo "Final status check..."
+systemctl list-units 'owui-*' --type=service | grep -v 'owui-07\|owui-08'
+
+# 4. HEALTH CHECK core services
+echo "Core services health check:"
+for port in 8100 8101 8102 8103 8104 8105 8106 8109 8110 8111 8112 8113 8114 8115; do
+    if curl -s -f "http://localhost:$port/healthz" >/dev/null 2>&1; then
+        echo "✅ Port $port: Healthy"
+    else
+        echo "❌ Port $port: Not responding"
+    fi
+done
+
+# EXPECTED RESULT: 14 core services active, 2 sidecar services disabled
+# Core OpenWebUI Suite should be fully operational!
