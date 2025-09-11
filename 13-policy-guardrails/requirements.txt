@@ -1,7 +1,3 @@
-"""Policy Guardrails service dependencies.
-Migrated to Pydantic v2 (core stack via constraints).
-"""
-
 fastapi
 uvicorn
 pydantic

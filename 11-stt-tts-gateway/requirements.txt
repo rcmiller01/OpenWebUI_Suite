@@ -1,8 +1,3 @@
-"""STT / TTS Gateway dependencies.
-Core web stack via constraints. Heavy ML libs kept with minimums.
-Consider creating a gpu profile for tighter pinning later.
-"""
-
 fastapi
 uvicorn
 pydantic
