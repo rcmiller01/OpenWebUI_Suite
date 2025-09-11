@@ -1,0 +1,38 @@
+# OpenWebUI Suite - Final Manual Fix Commands
+# Run these on your production server to complete the deployment
+
+cd /opt/openwebui-suite
+source .venv/bin/activate
+
+# 1. INSTALL missing dependencies
+echo "Installing missing dependencies..."
+pip install faster_whisper
+pip install -r 13-policy-guardrails/requirements.txt
+
+# 2. RESTART services with dependency issues
+sudo systemctl restart owui-11-stt-tts-gateway.service
+sudo systemctl restart owui-13-policy-guardrails.service
+
+# Wait and check
+sleep 5
+
+# 3. CHECK status of problem services
+echo "Checking service status..."
+systemctl status owui-11-stt-tts-gateway.service --no-pager -l
+systemctl status owui-13-policy-guardrails.service --no-pager -l
+
+# 4. FINAL health check
+echo "Final health check..."
+for port in 8101 8102 8103 8105 8106 8111 8113; do
+    if curl -s -f "http://localhost:$port/healthz" >/dev/null 2>&1; then
+        echo "✅ Port $port: Healthy"
+    else
+        echo "❌ Port $port: Not responding"
+    fi
+done
+
+# 5. SERVICES summary
+echo "All core services:"
+systemctl list-units 'owui-*' --type=service --state=active
+
+# EXPECTED: 14/14 core services active and most health endpoints responding!
